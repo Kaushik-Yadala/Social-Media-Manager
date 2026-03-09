@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from routes.ga_routes import router as ga_router
+from routes.yt_routes import router as yt_router
 
 app = FastAPI(
     title="Social Analytics Dashboard API",
@@ -23,6 +24,7 @@ app.add_middleware(
 
 # ── Routers ──────────────────────────────────────────────────────────────────
 app.include_router(ga_router)
+app.include_router(yt_router)
 
 
 # ── Root / Health ─────────────────────────────────────────────────────────────

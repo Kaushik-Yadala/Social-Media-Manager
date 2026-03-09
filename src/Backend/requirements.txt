@@ -6,5 +6,6 @@ pydantic
 pydantic-settings
 python-dotenv
 google-analytics-data
+google-api-python-client
 httpx
 pytest-asyncio
