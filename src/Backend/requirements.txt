@@ -3,3 +3,8 @@ uvicorn[standard]
 motor
 pytest
 pydantic
+pydantic-settings
+python-dotenv
+google-analytics-data
+httpx
+pytest-asyncio
