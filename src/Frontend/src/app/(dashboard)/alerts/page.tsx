@@ -6,13 +6,14 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { alerts } from '@/lib/stub-data/alerts';
-import { AlertCircle, CheckCircle, Clock, Bell, X, Instagram, Linkedin, MessageCircle, Filter } from 'lucide-react';
+import { AlertCircle, CheckCircle, Clock, Bell, X, Instagram, Linkedin, MessageCircle, Youtube, Filter } from 'lucide-react';
 import { Alert as AlertType, AlertSeverity, AlertStatus } from '@/types';
 
 const channelIcons: Record<string, React.ReactNode> = {
     instagram: <Instagram className="h-3.5 w-3.5" />,
     linkedin: <Linkedin className="h-3.5 w-3.5" />,
     whatsapp: <MessageCircle className="h-3.5 w-3.5" />,
+    youtube: <Youtube className="h-3.5 w-3.5" />,
 };
 
 export default function AlertsPage() {

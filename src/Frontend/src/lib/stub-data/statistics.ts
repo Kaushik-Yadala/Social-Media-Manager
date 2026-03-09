@@ -39,6 +39,20 @@ export const channelStats: ChannelStats[] = [
         reach: 5100,
         ctr: 12.5,
     },
+    {
+        channel: 'youtube',
+        followers: 8750,
+        followerGrowth: 6.4,
+        engagement: 2890,
+        engagementRate: 5.6,
+        impressions: 342000,
+        reach: 198000,
+        ctr: 4.2,
+        paidReach: 48000,
+        organicReach: 150000,
+        paidImpressions: 92000,
+        organicImpressions: 250000,
+    },
 ];
 
 export const followerGrowthTrend: TimeSeries[] = [
@@ -73,6 +87,17 @@ export const followerGrowthTrend: TimeSeries[] = [
             { date: '2026-02-01', value: 4500 },
             { date: '2026-02-15', value: 4800 },
             { date: '2026-03-01', value: 5200 },
+        ],
+    },
+    {
+        label: 'YouTube',
+        color: '#FF0000',
+        data: [
+            { date: '2026-01-01', value: 6800 },
+            { date: '2026-01-15', value: 7200 },
+            { date: '2026-02-01', value: 7600 },
+            { date: '2026-02-15', value: 8100 },
+            { date: '2026-03-01', value: 8750 },
         ],
     },
 ];

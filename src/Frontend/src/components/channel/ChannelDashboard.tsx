@@ -16,14 +16,14 @@ import { getWidgetsForChannel } from '@/lib/stub-data/widgets';
 import { getPostsByChannel } from '@/lib/stub-data/posts';
 import { channels } from '@/lib/stub-data/channels';
 import { followerGrowthTrend, geographyData, ageData, channelStats } from '@/lib/stub-data/statistics';
-import { ChannelSlug, Post, InstagramPost, LinkedInPost, WhatsAppMessage, WidgetDefinition } from '@/types';
+import { ChannelSlug, Post, InstagramPost, LinkedInPost, WhatsAppMessage, YouTubeVideo, WidgetDefinition } from '@/types';
 import { Plus, Search, Grid3X3, List, ArrowUpDown, Eye, Heart, Share2, MessageSquare, Bookmark, Clock, MousePointerClick, Users, TrendingUp, BarChart3, GripVertical } from 'lucide-react';
 
 const COLORS = ['#E5A100', '#4A90D9', '#50B88C', '#9B6AD4', '#C75B39', '#3AAFA9'];
 
 // ---- Widget Renderer ----
 function WidgetRenderer({ widget, channel }: { widget: WidgetDefinition; channel: ChannelSlug }) {
-    const chIdx = ['instagram', 'linkedin', 'whatsapp'].indexOf(channel);
+    const chIdx = ['instagram', 'linkedin', 'whatsapp', 'youtube'].indexOf(channel);
     const stats = channelStats.find(s => s.channel === channel);
     const growthData = followerGrowthTrend[chIdx]?.data.map(p => ({ date: p.date.slice(5), value: p.value })) || [];
 
@@ -280,6 +280,38 @@ function PostDetailDialog({ post, open, onClose }: { post: Post | null; open: bo
                             </div>
                         );
                     })()}
+
+                    {post.channel === 'youtube' && (() => {
+                        const p = post as YouTubeVideo;
+                        return (
+                            <div>
+                                <h4 className="text-xs font-medium text-stone-500 mb-2">YouTube Metrics (Data API / Analytics API)</h4>
+                                <div className="grid grid-cols-3 gap-2">
+                                    {[
+                                        { label: 'Views', value: p.performance.views },
+                                        { label: 'Watch Time (hrs)', value: p.performance.watchTimeHours },
+                                        { label: 'Likes', value: p.performance.likes },
+                                        { label: 'Comments', value: p.performance.comments },
+                                        { label: 'Shares', value: p.performance.shares },
+                                        { label: 'Subs Gained', value: p.performance.subscribersGained },
+                                        { label: 'Impressions', value: p.performance.impressions },
+                                        { label: 'Impressions CTR', value: `${p.performance.impressionsCTR}%` },
+                                        { label: 'Avg View Duration', value: `${Math.floor(p.performance.avgViewDuration / 60)}m ${p.performance.avgViewDuration % 60}s` },
+                                    ].map(m => (
+                                        <div key={m.label} className="p-2 rounded bg-stone-50 text-center">
+                                            <p className="text-[10px] text-stone-400">{m.label}</p>
+                                            <p className="text-sm font-semibold text-stone-800">{typeof m.value === 'number' ? m.value.toLocaleString() : m.value}</p>
+                                        </div>
+                                    ))}
+                                </div>
+                                {p.performance.estimatedRevenue > 0 && (
+                                    <div className="mt-3 p-2 rounded bg-green-50 border border-green-200">
+                                        <p className="text-[10px] text-green-600">Estimated Revenue: ${p.performance.estimatedRevenue.toFixed(2)} · Avg View: {p.performance.avgViewPercentage}% watched</p>
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })()}
                 </div>
             </DialogContent>
         </Dialog>
@@ -370,19 +402,23 @@ export function ChannelDashboard({ channel, channelName, channelColor, channelIc
                 ? (a as InstagramPost).performance.totalInteractions
                 : 'engagement' in (a as LinkedInPost).performance
                     ? (a as LinkedInPost).performance.engagement
-                    : (a as WhatsAppMessage).performance.read;
+                    : a.channel === 'youtube'
+                        ? (a as YouTubeVideo).performance.views
+                        : (a as WhatsAppMessage).performance.read;
             const engB = 'totalInteractions' in (b as InstagramPost).performance
                 ? (b as InstagramPost).performance.totalInteractions
                 : 'engagement' in (b as LinkedInPost).performance
                     ? (b as LinkedInPost).performance.engagement
-                    : (b as WhatsAppMessage).performance.read;
+                    : b.channel === 'youtube'
+                        ? (b as YouTubeVideo).performance.views
+                        : (b as WhatsAppMessage).performance.read;
             return engB - engA;
         });
         return result;
     }, [posts, typeFilter, searchQ, sortBy]);
 
     const stats = channelStats.find(s => s.channel === channel);
-    const postTypes = channel === 'instagram' ? ['feed', 'reel', 'story', 'carousel'] : channel === 'linkedin' ? ['post', 'article', 'document', 'video'] : ['template', 'session', 'interactive'];
+    const postTypes = channel === 'instagram' ? ['feed', 'reel', 'story', 'carousel'] : channel === 'linkedin' ? ['post', 'article', 'document', 'video'] : channel === 'youtube' ? ['video', 'short', 'live', 'premiere'] : ['template', 'session', 'interactive'];
 
     const addWidget = (w: WidgetDefinition) => {
         if (!activeWidgets.find(aw => aw.id === w.id)) {
@@ -399,6 +435,7 @@ export function ChannelDashboard({ channel, channelName, channelColor, channelIc
     const getEngagement = (post: Post): string => {
         if (post.channel === 'instagram') return `${(post as InstagramPost).performance.totalInteractions.toLocaleString()} interactions`;
         if (post.channel === 'linkedin') return `${(post as LinkedInPost).performance.engagement.toLocaleString()} engagement`;
+        if (post.channel === 'youtube') return `${(post as YouTubeVideo).performance.views.toLocaleString()} views`;
         return `${(post as WhatsAppMessage).performance.read.toLocaleString()} read`;
     };
 
@@ -412,7 +449,7 @@ export function ChannelDashboard({ channel, channelName, channelColor, channelIc
                     </div>
                     <div>
                         <h1 className="text-2xl font-heading font-bold text-stone-900">{channelName}</h1>
-                        <p className="text-sm text-stone-500">{stats?.followers.toLocaleString()} followers · {stats?.engagementRate}% engagement rate</p>
+                        <p className="text-sm text-stone-500">{stats?.followers.toLocaleString()} {channel === 'youtube' ? 'subscribers' : 'followers'} · {stats?.engagementRate}% engagement rate</p>
                     </div>
                 </div>
                 <div className="flex gap-2">
@@ -427,10 +464,10 @@ export function ChannelDashboard({ channel, channelName, channelColor, channelIc
 
             {/* KPI Row */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                <MetricKPI label="Followers" value={stats?.followers || 0} change={stats?.followerGrowth} icon={<Users className="h-5 w-5" />} />
+                <MetricKPI label={channel === 'youtube' ? 'Subscribers' : 'Followers'} value={stats?.followers || 0} change={stats?.followerGrowth} icon={<Users className="h-5 w-5" />} />
                 <MetricKPI label="Engagement Rate" value={`${stats?.engagementRate}%`} change={1.2} icon={<TrendingUp className="h-5 w-5" />} />
                 <MetricKPI label="Reach" value={stats?.reach || 0} change={8.5} icon={<Eye className="h-5 w-5" />} />
-                <MetricKPI label="Impressions" value={stats?.impressions || 0} change={12.4} icon={<BarChart3 className="h-5 w-5" />} />
+                <MetricKPI label={channel === 'youtube' ? 'Views' : 'Impressions'} value={stats?.impressions || 0} change={12.4} icon={<BarChart3 className="h-5 w-5" />} />
             </div>
 
             {view === 'widgets' ? (

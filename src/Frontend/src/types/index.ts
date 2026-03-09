@@ -16,7 +16,7 @@ export interface User {
 }
 
 // --- Channels ---
-export type ChannelSlug = 'instagram' | 'linkedin' | 'whatsapp';
+export type ChannelSlug = 'instagram' | 'linkedin' | 'whatsapp' | 'youtube';
 
 export interface Channel {
   id: string;
@@ -182,8 +182,9 @@ export interface SuggestedAction {
 export type InstagramPostType = 'feed' | 'reel' | 'story' | 'carousel';
 export type LinkedInPostType = 'post' | 'article' | 'document' | 'video';
 export type WhatsAppMessageType = 'template' | 'session' | 'interactive';
+export type YouTubeVideoType = 'video' | 'short' | 'live' | 'premiere';
 
-export type PostType = InstagramPostType | LinkedInPostType | WhatsAppMessageType;
+export type PostType = InstagramPostType | LinkedInPostType | WhatsAppMessageType | YouTubeVideoType;
 
 export interface PostBase {
   id: string;
@@ -261,7 +262,26 @@ export interface WhatsAppMessage extends PostBase {
   };
 }
 
-export type Post = InstagramPost | LinkedInPost | WhatsAppMessage;
+// YouTube video with Data API / Analytics API metrics
+export interface YouTubeVideo extends PostBase {
+  channel: 'youtube';
+  type: YouTubeVideoType;
+  performance: {
+    views: number;
+    watchTimeHours: number;
+    likes: number;
+    comments: number;
+    shares: number;
+    subscribersGained: number;
+    estimatedRevenue: number;
+    impressions: number;
+    impressionsCTR: number; // percentage
+    avgViewDuration: number; // seconds
+    avgViewPercentage: number; // percentage
+  };
+}
+
+export type Post = InstagramPost | LinkedInPost | WhatsAppMessage | YouTubeVideo;
 
 export interface PostFilter {
   channel: ChannelSlug;

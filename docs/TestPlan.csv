@@ -1,0 +1,283 @@
+Club Artizen Social Media Analytics Dashboard — Test Plan and Tracker,,,,,,,,
+Team: 35,,,"Members: Kaushik, Devshree, Kushagra, Sian, Srinivas",,,,,
+"Test
+No.","Related
+Use Case",Pre-conditions,"Test Description
+(Steps)",Expected Outcome,"R1 Outcome
+(color code cell)","R1 Comments
+(if failed)","R2 Outcome
+(color code cell)","R2 Comments
+(if failed)"
+1,UC-01,"User is logged in as Admin.
+Developer credentials for META (Facebook/Instagram) have been obtained.","1. Navigate to 'Integrations' page.
+2. Click 'Connect' next to Facebook/Instagram.
+3. Enter valid OAuth credentials and grant permissions.
+4. Click 'Confirm'.","Facebook and Instagram channels display as 'Connected'.
+System stores the access token securely.
+Initial data fetch begins automatically.",,,,
+2,UC-01,"User is logged in as Admin.
+LinkedIn Marketing API credentials have been obtained.","1. Navigate to 'Integrations' page.
+2. Click 'Connect' next to LinkedIn.
+3. Enter valid API credentials.
+4. Click 'Confirm'.","LinkedIn channel appears as 'Connected'.
+System begins fetching LinkedIn page metrics.",,,,
+3,UC-01,"User is logged in as Admin.
+Google Analytics API credentials have been obtained.","1. Navigate to 'Integrations' page.
+2. Click 'Connect' next to Google.
+3. Enter valid OAuth credentials.
+4. Click 'Confirm'.","Google channel appears as 'Connected'.
+System begins fetching video Google Ads performance metrics.",,,,
+4,UC-01,User is logged in as Admin.,"1. Navigate to 'Integrations' page.
+2. Click 'Connect' next to any channel.
+3. Enter intentionally incorrect/expired credentials.
+4. Click 'Confirm'.","System displays an error message prompting user to retry.
+Channel does NOT appear as 'Connected'.
+No token is stored.",,,,
+5,UC-01,"User is logged in as Admin.
+A previously connected channel has an expired OAuth token.","1. Navigate to the dashboard or Integrations page.
+2. Observe the status of the channel with the expired token.","System detects the expired token and prompts the user to re-authenticate.
+Channel status shows a warning/expired state until re-authentication completes.",,,,
+6,UC-02,"User is logged in.
+At least one social media channel is connected and has data available.","1. Navigate to the 'Statistics' page from main navigation.
+2. Observe the data displayed for all connected channels.","Statistics page loads showing performance data for all connected channels.
+Follower growth graph, engagement metrics, impressions/views, and CTR are all visible.",,,,
+7,UC-02,"User is logged in.
+At least one channel is connected with data available.","1. Navigate to 'Statistics' page.
+2. Select a specific channel (e.g. Instagram) from the channel selector.
+3. Observe the data.","Page updates to show individual statistics for the selected channel only.
+All metrics (follower growth, engagement, impressions, CTR) are displayed for that channel.",,,,
+8,UC-02,"User is logged in.
+At least one channel is connected with data spanning multiple weeks.","1. Navigate to 'Statistics' page.
+2. Locate the date range filter.
+3. Set start date to 30 days ago and end date to today.
+4. Apply the filter.","All visualisations refresh to show data within the selected 30-day range only.
+Data outside the range is excluded from the charts.",,,,
+9,UC-02,"User is logged in.
+A channel has been connected but no data has yet been fetched.","1. Navigate to 'Statistics' page.
+2. Select the newly connected channel.","System displays a loading state or a clear message indicating data is being retrieved.
+No blank screen or unhandled error is shown.",,,,
+10,UC-02,"User is logged in.
+WhatsApp Business is connected (limited public metrics only).","1. Navigate to 'Statistics' page.
+2. Select the WhatsApp Business channel.","Available metrics are displayed correctly.
+Metrics unavailable via the API are clearly flagged with an explanatory note, not silently empty.",,,,
+11,UC-03,"User is logged in.
+At least one channel is connected with sufficient historical data.","1. Navigate to the 'Analytics' page.
+2. Observe the derived insights displayed.","Analytics page loads with derived insights including posting time vs. engagement correlations, top-performing post types, and location-based performance displayed as charts, tables, or ranked lists.",,,,
+12,UC-03,"User is logged in.
+Multiple channels are connected with data.","1. Navigate to 'Analytics' page.
+2. Select 'Cross-channel' view or observe the default multi-channel display.","Cross-channel insights are displayed, aggregating patterns across all connected platforms.",,,,
+13,UC-03,"User is logged in.
+At least one channel is connected with data.","1. Navigate to 'Analytics' page.
+2. Apply a date range filter (e.g. last 90 days).
+3. Apply a post type filter (e.g. Reels only).","Insights update to reflect only the filtered date range and post type.
+Charts and tables re-render accordingly.",,,,
+14,UC-03,"User is logged in.
+A channel was very recently connected with minimal data.","1. Navigate to 'Analytics' page.
+2. Select the newly connected channel.","System displays a message indicating insufficient data to generate insights.
+System suggests a timeframe for when analysis will be available.",,,,
+15,UC-04,"User is logged in.
+At least one channel is connected with data.
+Default or custom thresholds are configured.","1. Navigate to the main dashboard.
+2. Observe the Health Overview Widget.","Widget shows each connected channel with a colour-coded indicator (green/amber/red).
+Indicators reflect performance relative to configured thresholds.",,,,
+16,UC-04,"User is logged in.
+Health Overview Widget is visible with at least one channel indicator.","1. On the main dashboard, hover over or click a channel's colour-coded indicator in the Health Overview Widget.",A tooltip or summary popup appears showing the specific metrics driving that channel's status (e.g. 'Engagement rate is below threshold').,,,,
+17,UC-04,"User is logged in.
+A previously connected channel has lost its API connection.","1. Navigate to the main dashboard.
+2. Observe the Health Overview Widget.","The disconnected channel's indicator displays a grey or warning state.
+A prompt is shown directing the user to reconnect the channel.",,,,
+18,UC-04,"User is logged in as Admin.
+No custom performance thresholds have been configured.","1. Navigate to the main dashboard.
+2. Observe the Health Overview Widget.","Widget uses default benchmark values for colour-coding.
+A notification informs the Admin that custom thresholds can be configured.",,,,
+19,UC-05,"User is logged in.
+At least one social media channel has been connected.","1. Navigate to the main dashboard.
+2. Open the Widget Library panel.
+3. Browse available widgets.
+4. Drag a widget (e.g. 'Follower Growth') onto the dashboard canvas.","Widget appears on the canvas rendering live data.
+Widget library remains accessible for placing additional widgets.",,,,
+20,UC-05,"Test 19 completed.
+At least one widget is placed on the dashboard.","1. Drag an existing widget to a new position.
+2. Resize it by dragging its edges.
+3. Save the layout.
+4. Log out and log back in.","Widget moves and resizes correctly.
+On re-login, the dashboard layout is restored exactly as saved.",,,,
+21,UC-05,"Test 19 completed.
+At least one widget is placed on the dashboard.",1. Remove a placed widget by dragging it off the canvas or clicking 'Remove'.,"Widget is removed from the canvas.
+Layout updates to fill the space.
+Widget remains available in the Widget Library for future use.",,,,
+22,UC-05,"User is logged in.
+A widget exists for a channel with no data yet available.","1. Open the Widget Library.
+2. Drag the widget for the data-less channel onto the canvas.",Widget is placed on the canvas but displays a placeholder message indicating data is not yet available for that channel.,,,,
+23,UC-06,"User is logged in with a role that permits custom widget creation.
+Sufficient data exists for the selected parameters.","1. Navigate to the Widget Library or customisation panel.
+2. Click 'Create Custom Widget'.
+3. Select 'Engagement Rate' as primary parameter.
+4. Select 'Post Type' as secondary parameter.
+5. Choose 'Bar Chart' as visualisation type.
+6. Name the widget 'Engagement by Post Type' and save.","A live preview of the bar chart is shown before saving.
+The saved widget appears in the user's Widget Library.
+Widget can be dragged onto the dashboard and displays correct data.",,,,
+24,UC-06,User is logged in with widget creation permission.,"1. Open the custom widget builder.
+2. Select a primary parameter.
+3. Select a secondary parameter incompatible with the first.
+4. Attempt to choose an incompatible visualisation type.","Incompatible visualisation types are disabled/greyed out.
+A tooltip explains why those options are unavailable.
+User cannot save an invalid widget configuration.",,,,
+25,UC-06,"User is logged in.
+A channel has very limited data (fewer posts than the minimum threshold).","1. Open the custom widget builder.
+2. Select parameters for the data-limited channel.
+3. Observe the live preview.","System notifies the user of insufficient data to populate the widget preview.
+System suggests returning once more data has been collected.",,,,
+26,UC-07,"User is logged in.
+Sufficient data has been collected to generate a meaningful heatmap.","1. Navigate to the Analytics page or Visualisations section.
+2. Select 'Heatmap'.
+3. Select 'Post Frequency vs. Click-Through Rate' as the metric.
+4. Observe the rendered heatmap.","Heatmap renders correctly showing posting activity against CTR across time slots.
+Hovering over cells shows specific metric values.",,,,
+27,UC-07,"User is logged in.
+Sufficient data has been collected.","1. Navigate to Visualisations section.
+2. Select 'Spidermap'.
+3. Select multi-channel performance dimensions.
+4. Apply a date range filter.","Spidermap renders correctly showing multi-dimension performance across channels.
+Visualisation updates to reflect the filtered date range.",,,,
+28,UC-07,"User is logged in.
+Only a very small number of posts exist in the selected time period.","1. Navigate to Visualisations.
+2. Select 'Heatmap'.
+3. Set a very narrow date range with minimal posts.
+4. Attempt to generate the heatmap.","System displays a message indicating insufficient data density.
+System recommends a broader date range.
+No empty or misleading chart is displayed.",,,,
+29,UC-08,"User is logged in.
+Meta channel is connected with both paid and organic content data.","1. Navigate to the Statistics page.
+2. Select the Meta/Facebook channel.
+3. Locate the Paid/Organic toggle.
+4. Switch to 'Paid' view.","Metrics (reach, impressions, engagement) update to show paid content data only.
+Organic data is excluded from the current view.",,,,
+30,UC-08,"Test 29 completed.
+User is on Statistics page with Meta channel selected.",1. Switch the toggle from 'Paid' to 'Organic' view.,"Metrics update to display organic content performance only.
+Paid data is excluded from the view.",,,,
+31,UC-08,"Test 29 completed.
+User is on Statistics page with Meta channel selected.","1. Switch the toggle to 'Combined' view.
+2. Apply a date range filter to a specific campaign period.","Both paid and organic metrics are shown together.
+Data updates to reflect the selected campaign period.",,,,
+32,UC-08,"User is logged in.
+A connected channel (e.g. LinkedIn) has no paid content in the selected period.","1. Navigate to Statistics page.
+2. Select the channel with no paid content.
+3. Attempt to view 'Paid' data.","System displays organic data only.
+A clear notification informs the user that no paid data exists for the selected channel and period.",,,,
+33,UC-08,"User is logged in.
+A connected channel does not support paid/organic split via its API.","1. Navigate to Statistics page.
+2. Select the channel lacking API-level paid/organic split.
+3. Observe the paid/organic controls.","System displays a notification explaining the API limitation for that channel.
+User is not shown misleading or empty paid data.",,,,
+34,UC-09,"User is logged in as Admin.
+At least one social media channel is connected.","1. Navigate to the Alerts configuration section.
+2. Set threshold: 'Engagement drops by 20% or more on Instagram'.
+3. Save the alert configuration.","Alert threshold is saved.
+System confirms that monitoring is active for the specified threshold.",,,,
+35,UC-09,"Test 34 completed.
+Instagram engagement drops by more than 20% (simulated or real).","1. Observe the dashboard notification centre.
+2. Check the configured alert delivery method (email/message).","Alert is generated and delivered via the configured method.
+Alert includes: channel name, metric, current value, threshold, and timestamp.
+Alert appears in the dashboard notification centre.",,,,
+36,UC-09,"Test 35 completed.
+An alert is visible in the notification centre.","1. Click on the alert in the notification centre.
+2. Acknowledge or dismiss the alert.","Alert is marked as acknowledged/dismissed.
+Alert is retained in notification history for audit purposes.",,,,
+37,UC-09,"Alert threshold is configured.
+Performance metrics remain within the normal threshold range.",1. Monitor the dashboard for a period with no metric crossing the alert threshold.,"No alert is generated.
+System continues monitoring normally without spurious notifications.",,,,
+38,UC-09,"Test 34 completed.
+Alert delivery is configured via an invalid email address.","1. Trigger an alert condition (engagement drop).
+2. Observe system behaviour after delivery failure.","System logs the delivery failure and retries.
+Alert remains visible and accessible in the dashboard notification centre regardless of email failure.",,,,
+39,UC-10,"User is logged in.
+At least one channel with demographic audience data is connected.
+User is on the Statistics page.","1. Open the filter panel.
+2. Select Geography: 'United Kingdom'.
+3. Apply the filter.","Statistics visualisations re-render showing data for the UK audience segment only.
+Other geographic segments are excluded from the view.",,,,
+40,UC-10,"User is logged in.
+User is on the Statistics or Analytics page with a channel exposing demographics.","1. Open the filter panel.
+2. Select Age: '25-34'.
+3. Also select Company Size: '50-200 employees'.
+4. Apply both filters simultaneously.","Data updates to reflect the combined criteria.
+Only the audience matching both age and company size is shown.",,,,
+41,UC-10,"Tests 39 or 40 completed.
+Filters are currently active.",1. Click 'Clear all filters' on the filter panel.,"All filters are removed.
+Statistics and analytics views return to the full unfiltered dataset.",,,,
+42,UC-10,"User is logged in.
+WhatsApp Business is connected (no demographic API data).","1. Open the filter panel with WhatsApp Business selected.
+2. Observe the demographic filter options.","Demographic filter options are visible but disabled for WhatsApp Business.
+An explanatory message clarifies the API limitation for that channel.",,,,
+43,UC-10,"User is logged in.
+A channel with demographic data is connected.","1. Open the filter panel.
+2. Select a very specific, niche demographic combination unlikely to match any data.
+3. Apply the filter.","System displays an empty state message indicating no data matches the criteria.
+System suggests broadening the filter.",,,,
+44,UC-11,"User is logged in.
+Sufficient historical posting and engagement data has been collected for at least one channel.","1. Navigate to the Analytics page or 'Recommendations' section.
+2. Observe the optimal posting suggestions.","System surfaces recommendations per channel with optimal posting time windows and engagement uplift (e.g. 'Posts on Tuesday 18:00-20:00 receive 40% higher engagement on Instagram').
+Suggestions are broken down by channel and post type.",,,,
+45,UC-11,"Test 44 completed.
+Posting suggestions are displayed.","1. Locate a displayed posting suggestion.
+2. Click 'Mark as actioned'.",Suggestion is visually marked as actioned and distinguished from pending suggestions.,,,,
+46,UC-11,"User is logged in.
+A channel was very recently connected with fewer posts than the minimum threshold.","1. Navigate to the Analytics or Recommendations page.
+2. Select the recently connected channel.","System displays a message that recommendations are not yet available due to insufficient data.
+System shows an estimated timeframe for when suggestions will appear.",,,,
+47,UC-12,"User is logged in with competitor tracking permission.
+A competitor's profile is publicly accessible.","1. Navigate to 'Competitor Tracking' section.
+2. Enter the competitor's public social media handle or URL.
+3. Click 'Track'.","System validates the profile is publicly accessible.
+Competitor is added to the tracked list.
+Publicly available data (follower count, posting frequency) begins populating.",,,,
+48,UC-12,"Test 47 completed.
+The same competitor is already in the tracked list.","1. Navigate to 'Competitor Tracking'.
+2. Attempt to add the same competitor's handle again.","System alerts the user that this competitor is already being tracked.
+No duplicate entry is created.",,,,
+49,UC-12,User is logged in with competitor tracking permission.,"1. Navigate to 'Competitor Tracking'.
+2. Enter the handle of a private or inaccessible profile.
+3. Click 'Track'.","System notifies the user that the profile cannot be tracked (private/inaccessible) with an explanation.
+No entry is added to the tracked list.",,,,
+50,UC-13,"User is logged in.
+At least one competitor has been tracked (UC-12) for a sufficient period.","1. Navigate to 'Competitor Tracking'.
+2. Select a tracked competitor.
+3. Observe the trend analysis.","System shows content type frequency trends, posting cadence trends, and notable content strategy shifts.
+Visual markers highlight significant trend changes.",,,,
+51,UC-13,"User is logged in.
+At least two competitors are being tracked with sufficient historical data.","1. Navigate to 'Competitor Tracking'.
+2. Select multiple tracked competitors for comparison.
+3. Apply a date range filter.","System renders trend comparisons across all selected competitors simultaneously.
+Visualisation updates to reflect the filtered date range.",,,,
+52,UC-13,"User is logged in.
+A competitor was added very recently (insufficient tracking history).","1. Navigate to 'Competitor Tracking'.
+2. Select the recently added competitor and view trend analysis.","System displays available limited data and indicates when fuller trend analysis will be possible.
+No misleading trends are shown.",,,,
+53,UC-14,A user account exists with valid login credentials.,"1. Navigate to the login page.
+2. Enter a valid email address and password.
+3. Click 'Login'.","User is authenticated and redirected to the role-appropriate dashboard view.
+Role-specific data and navigation items are loaded correctly.",,,,
+54,UC-14,A user account exists.,"1. Navigate to the login page.
+2. Enter a valid email but an incorrect password.
+3. Click 'Login'.","System displays a generic error message (not specifying which field is wrong).
+User is not logged in.
+User is offered the option to retry or request a password reset.",,,,
+55,UC-14,A user account exists.,"1. Navigate to the login page.
+2. Enter incorrect credentials repeatedly, exceeding the defined failed-attempt limit.","Account is temporarily locked after the defined number of failures.
+System notifies the user to contact their admin.",,,,
+56,UC-14,User is logged in as Admin.,"1. Navigate to 'User Management'.
+2. Create a new user account.
+3. Assign the 'Marketing Team' role.
+4. Save.","New user account is created with Marketing Team permissions.
+New user can log in and sees only Marketing Team-permitted views.",,,,
+57,UC-14,"User is logged in as Admin.
+A Marketing Team user account exists.","1. Navigate to 'User Management'.
+2. Select the Marketing Team user.
+3. Change their role to 'Co-Founder'.
+4. Save.","Role is updated immediately.
+On the user's next login or session refresh, they see the Co-Founder dashboard with updated permissions.",,,,
+58,UC-14,A Marketing Team user is logged in.,1. Attempt to navigate directly (e.g. via URL) to a page restricted to Co-Founders or Admins only.,"System redirects the user to their permitted view.
+An 'Access Denied' message is displayed.
+No restricted data is visible to the unauthorised user.",,,,

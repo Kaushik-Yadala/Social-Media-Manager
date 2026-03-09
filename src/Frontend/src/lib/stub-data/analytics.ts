@@ -6,6 +6,8 @@ export const postTypePerformance: PostTypePerformance[] = [
     { type: 'Feed Post', reach: 28000, comments: 340, shares: 280, engagement: 3.5 },
     { type: 'Story', reach: 18000, comments: 0, shares: 120, engagement: 2.8 },
     { type: 'Article', reach: 12000, comments: 180, shares: 340, engagement: 3.9 },
+    { type: 'YT Video', reach: 67800, comments: 312, shares: 890, engagement: 5.6 },
+    { type: 'YT Short', reach: 128000, comments: 456, shares: 2340, engagement: 7.8 },
 ];
 
 export const optimalPostingTimes: OptimalPostingTime[] = [
@@ -28,10 +30,10 @@ export const heatmapData: HeatmapCell[] = days.flatMap(day =>
 );
 
 export const spiderChartData = [
-    { metric: 'Reach', instagram: 85, linkedin: 60, whatsapp: 40 },
-    { metric: 'Engagement', instagram: 78, linkedin: 55, whatsapp: 92 },
-    { metric: 'Growth', instagram: 65, linkedin: 48, whatsapp: 88 },
-    { metric: 'Content Quality', instagram: 90, linkedin: 75, whatsapp: 60 },
-    { metric: 'Response Time', instagram: 45, linkedin: 50, whatsapp: 95 },
-    { metric: 'Conversion', instagram: 55, linkedin: 70, whatsapp: 82 },
+    { metric: 'Reach', instagram: 85, linkedin: 60, whatsapp: 40, youtube: 78 },
+    { metric: 'Engagement', instagram: 78, linkedin: 55, whatsapp: 92, youtube: 72 },
+    { metric: 'Growth', instagram: 65, linkedin: 48, whatsapp: 88, youtube: 74 },
+    { metric: 'Content Quality', instagram: 90, linkedin: 75, whatsapp: 60, youtube: 85 },
+    { metric: 'Response Time', instagram: 45, linkedin: 50, whatsapp: 95, youtube: 35 },
+    { metric: 'Conversion', instagram: 55, linkedin: 70, whatsapp: 82, youtube: 62 },
 ];

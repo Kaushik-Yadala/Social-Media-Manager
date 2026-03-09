@@ -26,9 +26,9 @@ export default function StatisticsPage() {
         }
         : channelStats.find(c => c.channel === selectedChannel)!;
 
-    const growthIdx = selectedChannel === 'all' ? -1 : ['instagram', 'linkedin', 'whatsapp'].indexOf(selectedChannel);
+    const growthIdx = selectedChannel === 'all' ? -1 : ['instagram', 'linkedin', 'whatsapp', 'youtube'].indexOf(selectedChannel);
     const growthData = selectedChannel === 'all'
-        ? followerGrowthTrend[0].data.map((p, i) => ({ date: p.date.slice(5), Instagram: followerGrowthTrend[0].data[i].value, LinkedIn: followerGrowthTrend[1].data[i].value, WhatsApp: followerGrowthTrend[2].data[i].value }))
+        ? followerGrowthTrend[0].data.map((p, i) => ({ date: p.date.slice(5), Instagram: followerGrowthTrend[0].data[i].value, LinkedIn: followerGrowthTrend[1].data[i].value, WhatsApp: followerGrowthTrend[2].data[i].value, YouTube: followerGrowthTrend[3].data[i].value }))
         : followerGrowthTrend[growthIdx].data.map(p => ({ date: p.date.slice(5), [followerGrowthTrend[growthIdx].label]: p.value }));
 
     return (
@@ -45,6 +45,7 @@ export default function StatisticsPage() {
                             <TabsTrigger value="instagram">Instagram</TabsTrigger>
                             <TabsTrigger value="linkedin">LinkedIn</TabsTrigger>
                             <TabsTrigger value="whatsapp">WhatsApp</TabsTrigger>
+                            <TabsTrigger value="youtube">YouTube</TabsTrigger>
                         </TabsList>
                     </Tabs>
                     <Tabs value={dataType} onValueChange={(v) => setDataType(v as 'all' | 'paid' | 'organic')}>
@@ -79,6 +80,7 @@ export default function StatisticsPage() {
                                     <Area type="monotone" dataKey="Instagram" stroke="#E4405F" fill="#E4405F" fillOpacity={0.1} strokeWidth={2} />
                                     <Area type="monotone" dataKey="LinkedIn" stroke="#0A66C2" fill="#0A66C2" fillOpacity={0.1} strokeWidth={2} />
                                     <Area type="monotone" dataKey="WhatsApp" stroke="#25D366" fill="#25D366" fillOpacity={0.1} strokeWidth={2} />
+                                    <Area type="monotone" dataKey="YouTube" stroke="#FF0000" fill="#FF0000" fillOpacity={0.1} strokeWidth={2} />
                                 </>
                             ) : (
                                 <Area type="monotone" dataKey={followerGrowthTrend[growthIdx].label} stroke={followerGrowthTrend[growthIdx].color} fill={followerGrowthTrend[growthIdx].color} fillOpacity={0.15} strokeWidth={2} />

@@ -7,12 +7,13 @@ import { postTypePerformance, optimalPostingTimes, spiderChartData, heatmapData 
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useState } from 'react';
 import { RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis } from 'recharts';
-import { Lightbulb, Clock, TrendingUp } from 'lucide-react';
+import { Lightbulb, Clock, TrendingUp, Youtube } from 'lucide-react';
 
 const recommendations = [
     { icon: <Clock className="h-4 w-4" />, text: 'Post Reels between 6-7 PM on Saturdays for maximum engagement (7.2% avg).' },
     { icon: <TrendingUp className="h-4 w-4" />, text: 'Carousel posts drive 2x more saves than single image posts. Increase carousel frequency.' },
     { icon: <Lightbulb className="h-4 w-4" />, text: 'LinkedIn Articles outperform regular posts by 80% in CTR. Aim for 2 articles per month.' },
+    { icon: <Youtube className="h-4 w-4" />, text: 'YouTube Shorts drive 3x more subscriber growth than long-form. Publish 3-4 Shorts per week.' },
 ];
 
 export default function AnalyticsPage() {
@@ -91,6 +92,7 @@ export default function AnalyticsPage() {
                                 <Radar name="Instagram" dataKey="instagram" stroke="#E4405F" fill="#E4405F" fillOpacity={0.15} strokeWidth={2} />
                                 <Radar name="LinkedIn" dataKey="linkedin" stroke="#0A66C2" fill="#0A66C2" fillOpacity={0.15} strokeWidth={2} />
                                 <Radar name="WhatsApp" dataKey="whatsapp" stroke="#25D366" fill="#25D366" fillOpacity={0.15} strokeWidth={2} />
+                                <Radar name="YouTube" dataKey="youtube" stroke="#FF0000" fill="#FF0000" fillOpacity={0.15} strokeWidth={2} />
                                 <Legend />
                                 <Tooltip contentStyle={{ borderRadius: 8, border: '1px solid #E7E5E4', fontSize: 12 }} />
                             </RadarChart>

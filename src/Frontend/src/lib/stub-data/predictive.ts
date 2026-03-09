@@ -15,6 +15,8 @@ export const suggestedActions: SuggestedAction[] = [
     { id: 'sa-3', priority: 'medium', title: 'BTS Studio Tour Campaign', description: 'Send a WhatsApp broadcast template with studio tour highlights and booking link.', channel: 'whatsapp', expectedImpact: '+25% open rate' },
     { id: 'sa-4', priority: 'medium', title: 'Sustainable Materials Spotlight', description: 'Feature sustainable art materials in Instagram Stories with polls.', channel: 'instagram', expectedImpact: '+20% story engagement' },
     { id: 'sa-5', priority: 'low', title: 'Virtual Gallery LinkedIn Event', description: 'Create a LinkedIn Event for your next virtual gallery opening.', channel: 'linkedin', expectedImpact: '+15% event registrations' },
+    { id: 'sa-6', priority: 'high', title: 'Launch YouTube Shorts Series', description: 'Start a weekly YouTube Shorts series showcasing 60-second art tutorials. Shorts are driving 3x subscriber growth.', channel: 'youtube', expectedImpact: '+60% subscriber growth' },
+    { id: 'sa-7', priority: 'medium', title: 'YouTube Community Post Poll', description: 'Use YouTube Community posts to poll your audience on next video topics. Boosts engagement and retention.', channel: 'youtube', expectedImpact: '+20% avg view duration' },
 ];
 
 export const trendGrowthTrajectory: TimeSeries[] = [
