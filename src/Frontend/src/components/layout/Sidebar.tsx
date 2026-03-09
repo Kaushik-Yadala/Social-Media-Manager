@@ -18,6 +18,7 @@ import {
     ChevronDown,
     ChevronRight,
     Palette,
+    PanelTop,
 } from 'lucide-react';
 
 interface NavItem {
@@ -37,6 +38,7 @@ const navigation: NavItem[] = [
             { label: 'Instagram', href: '/channels/instagram', icon: Instagram },
             { label: 'LinkedIn', href: '/channels/linkedin', icon: Linkedin },
             { label: 'WhatsApp', href: '/channels/whatsapp', icon: MessageCircle },
+            { label: 'Website', href: '/channels/website', icon: PanelTop },
         ],
     },
     { label: 'Statistics', href: '/statistics', icon: BarChart3 },
