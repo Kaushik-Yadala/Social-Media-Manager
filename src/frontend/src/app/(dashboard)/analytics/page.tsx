@@ -132,14 +132,14 @@ export default function AnalyticsPage() {
                                 <div />
                                 {hours.map(h => <div key={h} className="text-[9px] text-stone-400 text-center">{h}:00</div>)}
                                 {days.map(day => (
-                                    <>
-                                        <div key={`label-${day}`} className="text-[10px] text-stone-500 flex items-center">{day}</div>
+                                    <div key={day} className="contents">
+                                        <div className="text-[10px] text-stone-500 flex items-center">{day}</div>
                                         {hours.map(h => {
                                             const val = heatmapData.find(c => c.day === day && c.hour === h)?.value || 0;
                                             const opacity = Math.max(0.08, val / 100);
                                             return <div key={`${day}-${h}`} className="h-6 rounded-sm cursor-pointer transition-all hover:ring-1 hover:ring-amber-400" style={{ backgroundColor: `rgba(229, 161, 0, ${opacity})` }} title={`${day} ${h}:00 — ${val}% engagement`} />;
                                         })}
-                                    </>
+                                    </div>
                                 ))}
                             </div>
                             <div className="flex items-center gap-2 mt-2 justify-end">

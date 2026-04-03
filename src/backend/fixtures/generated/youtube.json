@@ -1,0 +1,848 @@
+{
+  "overview": {
+    "subscribers": 22682,
+    "total_views": 749639,
+    "total_videos": 326,
+    "watch_time_hours": 70669,
+    "avg_view_duration": 365.1,
+    "engagement_rate": 11.58,
+    "estimated_revenue": 5318.74,
+    "subscriber_delta_30d": 1306,
+    "views_delta_30d": 823,
+    "date_range": {
+      "start_date": "2026-03-05",
+      "end_date": "2026-04-03"
+    }
+  },
+  "views": {
+    "series": [
+      {
+        "date": "2026-03-05",
+        "value": 3761
+      },
+      {
+        "date": "2026-03-06",
+        "value": 3602
+      },
+      {
+        "date": "2026-03-07",
+        "value": 3319
+      },
+      {
+        "date": "2026-03-08",
+        "value": 715
+      },
+      {
+        "date": "2026-03-09",
+        "value": 3987
+      },
+      {
+        "date": "2026-03-10",
+        "value": 1750
+      },
+      {
+        "date": "2026-03-11",
+        "value": 4352
+      },
+      {
+        "date": "2026-03-12",
+        "value": 2187
+      },
+      {
+        "date": "2026-03-13",
+        "value": 1093
+      },
+      {
+        "date": "2026-03-14",
+        "value": 1687
+      },
+      {
+        "date": "2026-03-15",
+        "value": 1866
+      },
+      {
+        "date": "2026-03-16",
+        "value": 787
+      },
+      {
+        "date": "2026-03-17",
+        "value": 2329
+      },
+      {
+        "date": "2026-03-18",
+        "value": 1484
+      },
+      {
+        "date": "2026-03-19",
+        "value": 624
+      },
+      {
+        "date": "2026-03-20",
+        "value": 3877
+      },
+      {
+        "date": "2026-03-21",
+        "value": 4234
+      },
+      {
+        "date": "2026-03-22",
+        "value": 3897
+      },
+      {
+        "date": "2026-03-23",
+        "value": 3873
+      },
+      {
+        "date": "2026-03-24",
+        "value": 4156
+      },
+      {
+        "date": "2026-03-25",
+        "value": 3628
+      },
+      {
+        "date": "2026-03-26",
+        "value": 2866
+      },
+      {
+        "date": "2026-03-27",
+        "value": 2563
+      },
+      {
+        "date": "2026-03-28",
+        "value": 1168
+      },
+      {
+        "date": "2026-03-29",
+        "value": 3584
+      },
+      {
+        "date": "2026-03-30",
+        "value": 2741
+      },
+      {
+        "date": "2026-03-31",
+        "value": 519
+      },
+      {
+        "date": "2026-04-01",
+        "value": 1336
+      },
+      {
+        "date": "2026-04-02",
+        "value": 2395
+      },
+      {
+        "date": "2026-04-03",
+        "value": 1469
+      }
+    ],
+    "total": 660830,
+    "granularity": "day"
+  },
+  "subscriber_growth": {
+    "series": [
+      {
+        "date": "2026-03-05",
+        "gained": 43,
+        "lost": 1,
+        "net": 29
+      },
+      {
+        "date": "2026-03-06",
+        "gained": 76,
+        "lost": 7,
+        "net": 47
+      },
+      {
+        "date": "2026-03-07",
+        "gained": 44,
+        "lost": 9,
+        "net": 28
+      },
+      {
+        "date": "2026-03-08",
+        "gained": 38,
+        "lost": 4,
+        "net": 29
+      },
+      {
+        "date": "2026-03-09",
+        "gained": 8,
+        "lost": 5,
+        "net": 70
+      },
+      {
+        "date": "2026-03-10",
+        "gained": 75,
+        "lost": 9,
+        "net": 57
+      },
+      {
+        "date": "2026-03-11",
+        "gained": 9,
+        "lost": 8,
+        "net": 68
+      },
+      {
+        "date": "2026-03-12",
+        "gained": 26,
+        "lost": 9,
+        "net": 0
+      },
+      {
+        "date": "2026-03-13",
+        "gained": 50,
+        "lost": 8,
+        "net": 40
+      },
+      {
+        "date": "2026-03-14",
+        "gained": 40,
+        "lost": 5,
+        "net": -5
+      },
+      {
+        "date": "2026-03-15",
+        "gained": 58,
+        "lost": 0,
+        "net": 65
+      },
+      {
+        "date": "2026-03-16",
+        "gained": 27,
+        "lost": 8,
+        "net": 20
+      },
+      {
+        "date": "2026-03-17",
+        "gained": 7,
+        "lost": 6,
+        "net": 47
+      },
+      {
+        "date": "2026-03-18",
+        "gained": 44,
+        "lost": 4,
+        "net": 64
+      },
+      {
+        "date": "2026-03-19",
+        "gained": 58,
+        "lost": 2,
+        "net": 40
+      },
+      {
+        "date": "2026-03-20",
+        "gained": 5,
+        "lost": 3,
+        "net": 11
+      },
+      {
+        "date": "2026-03-21",
+        "gained": 24,
+        "lost": 15,
+        "net": 6
+      },
+      {
+        "date": "2026-03-22",
+        "gained": 16,
+        "lost": 11,
+        "net": 69
+      },
+      {
+        "date": "2026-03-23",
+        "gained": 50,
+        "lost": 8,
+        "net": 14
+      },
+      {
+        "date": "2026-03-24",
+        "gained": 14,
+        "lost": 12,
+        "net": 44
+      },
+      {
+        "date": "2026-03-25",
+        "gained": 21,
+        "lost": 7,
+        "net": -3
+      },
+      {
+        "date": "2026-03-26",
+        "gained": 43,
+        "lost": 5,
+        "net": -1
+      },
+      {
+        "date": "2026-03-27",
+        "gained": 44,
+        "lost": 1,
+        "net": 33
+      },
+      {
+        "date": "2026-03-28",
+        "gained": 62,
+        "lost": 14,
+        "net": -2
+      },
+      {
+        "date": "2026-03-29",
+        "gained": 10,
+        "lost": 5,
+        "net": 10
+      },
+      {
+        "date": "2026-03-30",
+        "gained": 65,
+        "lost": 13,
+        "net": 58
+      },
+      {
+        "date": "2026-03-31",
+        "gained": 10,
+        "lost": 7,
+        "net": 16
+      },
+      {
+        "date": "2026-04-01",
+        "gained": 52,
+        "lost": 15,
+        "net": -3
+      },
+      {
+        "date": "2026-04-02",
+        "gained": 28,
+        "lost": 9,
+        "net": 60
+      },
+      {
+        "date": "2026-04-03",
+        "gained": 74,
+        "lost": 13,
+        "net": 51
+      }
+    ],
+    "net_change": 674
+  },
+  "watch_time": {
+    "series": [
+      {
+        "date": "2026-03-05",
+        "value": 397.77
+      },
+      {
+        "date": "2026-03-06",
+        "value": 275.4
+      },
+      {
+        "date": "2026-03-07",
+        "value": 369.65
+      },
+      {
+        "date": "2026-03-08",
+        "value": 85.39
+      },
+      {
+        "date": "2026-03-09",
+        "value": 108.78
+      },
+      {
+        "date": "2026-03-10",
+        "value": 297.6
+      },
+      {
+        "date": "2026-03-11",
+        "value": 333.79
+      },
+      {
+        "date": "2026-03-12",
+        "value": 144.85
+      },
+      {
+        "date": "2026-03-13",
+        "value": 262.32
+      },
+      {
+        "date": "2026-03-14",
+        "value": 355.08
+      },
+      {
+        "date": "2026-03-15",
+        "value": 333.47
+      },
+      {
+        "date": "2026-03-16",
+        "value": 311.33
+      },
+      {
+        "date": "2026-03-17",
+        "value": 131.24
+      },
+      {
+        "date": "2026-03-18",
+        "value": 95.4
+      },
+      {
+        "date": "2026-03-19",
+        "value": 80.28
+      },
+      {
+        "date": "2026-03-20",
+        "value": 349.34
+      },
+      {
+        "date": "2026-03-21",
+        "value": 364.46
+      },
+      {
+        "date": "2026-03-22",
+        "value": 152.85
+      },
+      {
+        "date": "2026-03-23",
+        "value": 127.95
+      },
+      {
+        "date": "2026-03-24",
+        "value": 342.73
+      },
+      {
+        "date": "2026-03-25",
+        "value": 285.87
+      },
+      {
+        "date": "2026-03-26",
+        "value": 386.08
+      },
+      {
+        "date": "2026-03-27",
+        "value": 201.58
+      },
+      {
+        "date": "2026-03-28",
+        "value": 75.74
+      },
+      {
+        "date": "2026-03-29",
+        "value": 220.94
+      },
+      {
+        "date": "2026-03-30",
+        "value": 185.33
+      },
+      {
+        "date": "2026-03-31",
+        "value": 150.4
+      },
+      {
+        "date": "2026-04-01",
+        "value": 359.95
+      },
+      {
+        "date": "2026-04-02",
+        "value": 208.95
+      },
+      {
+        "date": "2026-04-03",
+        "value": 382.01
+      }
+    ],
+    "total_hours": 23521,
+    "avg_view_duration": 264.8,
+    "granularity": "day"
+  },
+  "top_videos": [
+    {
+      "video_id": "vid_0",
+      "title": "Test Video 0",
+      "published_at": "2026-02-13T17:44:56.519919",
+      "views": 87263,
+      "likes": 4439,
+      "comments": 358,
+      "shares": 37,
+      "watch_time_hours": 1490.9,
+      "avg_view_duration": 244.0,
+      "impressions_ctr": 10.0,
+      "video_type": "short"
+    },
+    {
+      "video_id": "vid_1",
+      "title": "Test Video 1",
+      "published_at": "2025-07-29T17:44:56.519946",
+      "views": 16244,
+      "likes": 3294,
+      "comments": 197,
+      "shares": 74,
+      "watch_time_hours": 526.9,
+      "avg_view_duration": 253.8,
+      "impressions_ctr": 5.51,
+      "video_type": "short"
+    },
+    {
+      "video_id": "vid_2",
+      "title": "Test Video 2",
+      "published_at": "2025-10-31T17:44:56.519964",
+      "views": 93340,
+      "likes": 360,
+      "comments": 351,
+      "shares": 15,
+      "watch_time_hours": 1448.9,
+      "avg_view_duration": 535.6,
+      "impressions_ctr": 13.44,
+      "video_type": "short"
+    },
+    {
+      "video_id": "vid_3",
+      "title": "Test Video 3",
+      "published_at": "2025-07-03T17:44:56.519977",
+      "views": 81816,
+      "likes": 531,
+      "comments": 53,
+      "shares": 68,
+      "watch_time_hours": 1096.4,
+      "avg_view_duration": 109.9,
+      "impressions_ctr": 13.48,
+      "video_type": "regular"
+    },
+    {
+      "video_id": "vid_4",
+      "title": "Test Video 4",
+      "published_at": "2025-08-07T17:44:56.519989",
+      "views": 39985,
+      "likes": 614,
+      "comments": 209,
+      "shares": 131,
+      "watch_time_hours": 1542.6,
+      "avg_view_duration": 428.9,
+      "impressions_ctr": 4.46,
+      "video_type": "live"
+    },
+    {
+      "video_id": "vid_5",
+      "title": "Test Video 5",
+      "published_at": "2026-03-23T17:44:56.520000",
+      "views": 64671,
+      "likes": 515,
+      "comments": 151,
+      "shares": 75,
+      "watch_time_hours": 4635.8,
+      "avg_view_duration": 589.8,
+      "impressions_ctr": 11.81,
+      "video_type": "regular"
+    },
+    {
+      "video_id": "vid_6",
+      "title": "Test Video 6",
+      "published_at": "2025-06-30T17:44:56.520011",
+      "views": 93863,
+      "likes": 954,
+      "comments": 158,
+      "shares": 61,
+      "watch_time_hours": 4584.5,
+      "avg_view_duration": 183.7,
+      "impressions_ctr": 4.13,
+      "video_type": "short"
+    },
+    {
+      "video_id": "vid_7",
+      "title": "Test Video 7",
+      "published_at": "2025-11-20T17:44:56.520022",
+      "views": 53302,
+      "likes": 2973,
+      "comments": 48,
+      "shares": 45,
+      "watch_time_hours": 2423.5,
+      "avg_view_duration": 124.1,
+      "impressions_ctr": 6.85,
+      "video_type": "regular"
+    },
+    {
+      "video_id": "vid_8",
+      "title": "Test Video 8",
+      "published_at": "2025-04-29T17:44:56.520032",
+      "views": 99509,
+      "likes": 1213,
+      "comments": 34,
+      "shares": 93,
+      "watch_time_hours": 1892.9,
+      "avg_view_duration": 191.5,
+      "impressions_ctr": 12.97,
+      "video_type": "live"
+    },
+    {
+      "video_id": "vid_9",
+      "title": "Test Video 9",
+      "published_at": "2025-11-19T17:44:56.520044",
+      "views": 70536,
+      "likes": 1270,
+      "comments": 394,
+      "shares": 193,
+      "watch_time_hours": 3453.2,
+      "avg_view_duration": 273.7,
+      "impressions_ctr": 9.8,
+      "video_type": "regular"
+    }
+  ],
+  "demographics": {
+    "by_country": [
+      {
+        "country": "India",
+        "views": 36295,
+        "percentage": 30.7
+      }
+    ],
+    "by_age": [
+      {
+        "age_group": "25-34",
+        "views": 26742,
+        "percentage": 24.4
+      }
+    ],
+    "by_gender": [
+      {
+        "gender": "male",
+        "views": 71355,
+        "percentage": 69.5
+      }
+    ]
+  },
+  "traffic_sources": [
+    {
+      "source": "YouTube search",
+      "views": 36706,
+      "watch_time_hours": 9999,
+      "percentage": 46.1
+    },
+    {
+      "source": "Suggested videos",
+      "views": 21683,
+      "watch_time_hours": 7042,
+      "percentage": 35.8
+    },
+    {
+      "source": "External",
+      "views": 10845,
+      "watch_time_hours": 1377,
+      "percentage": 9.0
+    }
+  ],
+  "engagement": {
+    "total_likes": 39844,
+    "total_comments": 2985,
+    "total_shares": 2141,
+    "likes_per_view": 0.0694,
+    "comments_per_view": 0.008,
+    "shares_per_view": 0.0038,
+    "avg_engagement_rate": 6.98
+  },
+  "revenue": {
+    "series": [
+      {
+        "date": "2026-03-05",
+        "revenue": 22.86,
+        "rpm": 4.25,
+        "cpm": 2.51
+      },
+      {
+        "date": "2026-03-06",
+        "revenue": 74.85,
+        "rpm": 7.41,
+        "cpm": 10.25
+      },
+      {
+        "date": "2026-03-07",
+        "revenue": 61.92,
+        "rpm": 2.58,
+        "cpm": 2.6
+      },
+      {
+        "date": "2026-03-08",
+        "revenue": 34.91,
+        "rpm": 7.09,
+        "cpm": 10.75
+      },
+      {
+        "date": "2026-03-09",
+        "revenue": 75.7,
+        "rpm": 6.56,
+        "cpm": 4.36
+      },
+      {
+        "date": "2026-03-10",
+        "revenue": 42.78,
+        "rpm": 5.6,
+        "cpm": 9.62
+      },
+      {
+        "date": "2026-03-11",
+        "revenue": 64.03,
+        "rpm": 7.41,
+        "cpm": 2.56
+      },
+      {
+        "date": "2026-03-12",
+        "revenue": 55.31,
+        "rpm": 1.12,
+        "cpm": 6.44
+      },
+      {
+        "date": "2026-03-13",
+        "revenue": 90.23,
+        "rpm": 3.2,
+        "cpm": 9.13
+      },
+      {
+        "date": "2026-03-14",
+        "revenue": 16.32,
+        "rpm": 6.2,
+        "cpm": 11.07
+      },
+      {
+        "date": "2026-03-15",
+        "revenue": 88.51,
+        "rpm": 2.98,
+        "cpm": 9.28
+      },
+      {
+        "date": "2026-03-16",
+        "revenue": 55.3,
+        "rpm": 3.4,
+        "cpm": 10.24
+      },
+      {
+        "date": "2026-03-17",
+        "revenue": 91.2,
+        "rpm": 3.96,
+        "cpm": 8.13
+      },
+      {
+        "date": "2026-03-18",
+        "revenue": 65.54,
+        "rpm": 5.37,
+        "cpm": 4.25
+      },
+      {
+        "date": "2026-03-19",
+        "revenue": 42.98,
+        "rpm": 1.55,
+        "cpm": 5.28
+      },
+      {
+        "date": "2026-03-20",
+        "revenue": 81.68,
+        "rpm": 1.23,
+        "cpm": 8.17
+      },
+      {
+        "date": "2026-03-21",
+        "revenue": 38.57,
+        "rpm": 4.86,
+        "cpm": 11.97
+      },
+      {
+        "date": "2026-03-22",
+        "revenue": 68.8,
+        "rpm": 7.06,
+        "cpm": 10.63
+      },
+      {
+        "date": "2026-03-23",
+        "revenue": 68.54,
+        "rpm": 6.5,
+        "cpm": 4.74
+      },
+      {
+        "date": "2026-03-24",
+        "revenue": 35.03,
+        "rpm": 7.75,
+        "cpm": 11.09
+      },
+      {
+        "date": "2026-03-25",
+        "revenue": 50.71,
+        "rpm": 4.9,
+        "cpm": 8.94
+      },
+      {
+        "date": "2026-03-26",
+        "revenue": 86.12,
+        "rpm": 5.38,
+        "cpm": 3.16
+      },
+      {
+        "date": "2026-03-27",
+        "revenue": 54.93,
+        "rpm": 3.69,
+        "cpm": 5.53
+      },
+      {
+        "date": "2026-03-28",
+        "revenue": 31.98,
+        "rpm": 7.52,
+        "cpm": 5.79
+      },
+      {
+        "date": "2026-03-29",
+        "revenue": 84.81,
+        "rpm": 2.85,
+        "cpm": 9.17
+      },
+      {
+        "date": "2026-03-30",
+        "revenue": 75.25,
+        "rpm": 3.24,
+        "cpm": 8.38
+      },
+      {
+        "date": "2026-03-31",
+        "revenue": 83.51,
+        "rpm": 4.31,
+        "cpm": 6.17
+      },
+      {
+        "date": "2026-04-01",
+        "revenue": 40.69,
+        "rpm": 7.8,
+        "cpm": 5.04
+      },
+      {
+        "date": "2026-04-02",
+        "revenue": 79.22,
+        "rpm": 1.95,
+        "cpm": 7.13
+      },
+      {
+        "date": "2026-04-03",
+        "revenue": 6.25,
+        "rpm": 6.46,
+        "cpm": 4.51
+      }
+    ],
+    "total_revenue": 7463.34,
+    "avg_rpm": 3.31,
+    "avg_cpm": 5.1
+  },
+  "content_performance": {
+    "by_type": [
+      {
+        "video_type": "regular",
+        "count": 62,
+        "total_views": 181833,
+        "avg_views": 1565,
+        "total_watch_time_hours": 15267,
+        "avg_engagement_rate": 7.11,
+        "subscribers_gained": 699
+      },
+      {
+        "video_type": "short",
+        "count": 16,
+        "total_views": 119978,
+        "avg_views": 8225,
+        "total_watch_time_hours": 1270,
+        "avg_engagement_rate": 7.36,
+        "subscribers_gained": 125
+      }
+    ]
+  }
+}
