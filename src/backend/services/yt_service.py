@@ -13,7 +13,9 @@ Required env vars for real data:
 """
 from __future__ import annotations
 
+import json
 from datetime import date, timedelta
+from pathlib import Path
 from typing import Any
 
 from core.config import settings
@@ -24,6 +26,18 @@ from core.config import settings
 # ──────────────────────────────────────────
 
 _yt_client: Any = None
+FIXTURE_FILE = Path(__file__).resolve().parent.parent / "fixtures" / "generated" / "youtube.json"
+
+
+def _load_fixture(key: str | None = None) -> dict | None:
+    if not FIXTURE_FILE.exists():
+        return None
+    try:
+        with open(FIXTURE_FILE) as f:
+            data = json.load(f)
+        return data.get(key) if key else data
+    except Exception:
+        return None
 
 
 def _get_client():
@@ -75,6 +89,22 @@ def _pct_of(part: int | float, total: int | float) -> float:
 # ──────────────────────────────────────────
 
 def _stub_overview(start_date: str, end_date: str) -> dict:
+    fixture = _load_fixture("overview")
+    if fixture:
+        delta = _safe_int(fixture.get("subscriber_delta_30d", 0))
+        return {
+            "subscribers": _safe_int(fixture.get("subscribers", 0)),
+            "total_views": _safe_int(fixture.get("total_views", 0)),
+            "total_videos": _safe_int(fixture.get("total_videos", 0)),
+            "watch_time_hours": _safe_float(fixture.get("watch_time_hours", 0)),
+            "avg_view_duration": _safe_float(fixture.get("avg_view_duration", 0)),
+            "engagement_rate": _safe_float(fixture.get("engagement_rate", 0)),
+            "estimated_revenue": _safe_float(fixture.get("estimated_revenue", 0)),
+            "views_last_30d": _safe_int(fixture.get("views_delta_30d", 0)),
+            "subscribers_gained_30d": max(delta, 0),
+            "subscribers_lost_30d": max(-delta, 0),
+            "date_range": {"start_date": start_date, "end_date": end_date},
+        }
     return {
         "subscribers": 8750,
         "total_views": 1_245_600,
@@ -91,6 +121,14 @@ def _stub_overview(start_date: str, end_date: str) -> dict:
 
 
 def _stub_views(granularity: str) -> dict:
+    fixture = _load_fixture("views")
+    if fixture and "series" in fixture:
+        return {
+            "series": fixture.get("series", []),
+            "total": _safe_int(fixture.get("total", 0)),
+            "granularity": fixture.get("granularity", granularity),
+        }
+
     today = date.today()
     series = []
     for i in range(30):
@@ -106,6 +144,18 @@ def _stub_views(granularity: str) -> dict:
 
 
 def _stub_subscriber_growth() -> dict:
+    fixture = _load_fixture("subscriber_growth")
+    if fixture and "series" in fixture:
+        series = fixture.get("series", [])
+        total_gained = sum(_safe_int(p.get("gained", 0)) for p in series)
+        total_lost = sum(_safe_int(p.get("lost", 0)) for p in series)
+        return {
+            "series": series,
+            "total_gained": total_gained,
+            "total_lost": total_lost,
+            "net_change": _safe_int(fixture.get("net_change", total_gained - total_lost)),
+        }
+
     today = date.today()
     series = []
     total_gained = 0
@@ -131,6 +181,15 @@ def _stub_subscriber_growth() -> dict:
 
 
 def _stub_watch_time(granularity: str) -> dict:
+    fixture = _load_fixture("watch_time")
+    if fixture and "series" in fixture:
+        return {
+            "series": fixture.get("series", []),
+            "total_hours": _safe_float(fixture.get("total_hours", 0)),
+            "avg_view_duration": _safe_float(fixture.get("avg_view_duration", 0)),
+            "granularity": fixture.get("granularity", granularity),
+        }
+
     today = date.today()
     series = []
     for i in range(30):
@@ -145,6 +204,12 @@ def _stub_watch_time(granularity: str) -> dict:
 
 
 def _stub_top_videos() -> dict:
+    fixture = _load_fixture("top_videos")
+    if isinstance(fixture, list):
+        return {"videos": fixture}
+    if isinstance(fixture, dict) and "videos" in fixture:
+        return {"videos": fixture.get("videos", [])}
+
     videos = [
         {
             "video_id": "yt-stub-001",
@@ -229,6 +294,34 @@ def _stub_top_videos() -> dict:
 
 
 def _stub_demographics() -> dict:
+    fixture = _load_fixture("demographics")
+    if fixture:
+        by_country = [
+            {
+                "label": item.get("country", item.get("label", "Unknown")),
+                "value": _safe_int(item.get("views", item.get("value", 0))),
+                "percentage": _safe_float(item.get("percentage", 0)),
+            }
+            for item in fixture.get("by_country", [])
+        ]
+        by_age = [
+            {
+                "label": item.get("age_group", item.get("label", "Unknown")),
+                "value": _safe_int(item.get("views", item.get("value", 0))),
+                "percentage": _safe_float(item.get("percentage", 0)),
+            }
+            for item in fixture.get("by_age", [])
+        ]
+        by_gender = [
+            {
+                "label": item.get("gender", item.get("label", "Unknown")),
+                "value": _safe_int(item.get("views", item.get("value", 0))),
+                "percentage": _safe_float(item.get("percentage", 0)),
+            }
+            for item in fixture.get("by_gender", [])
+        ]
+        return {"by_country": by_country, "by_age": by_age, "by_gender": by_gender}
+
     return {
         "by_country": [
             {"label": "India", "value": 3200, "percentage": 36.6},
@@ -255,6 +348,19 @@ def _stub_demographics() -> dict:
 
 
 def _stub_traffic_sources() -> dict:
+    fixture = _load_fixture("traffic_sources")
+    if isinstance(fixture, list):
+        return {
+            "sources": fixture,
+            "total_views": sum(_safe_int(item.get("views", 0)) for item in fixture),
+        }
+    if isinstance(fixture, dict) and "sources" in fixture:
+        sources = fixture.get("sources", [])
+        return {
+            "sources": sources,
+            "total_views": _safe_int(fixture.get("total_views", sum(_safe_int(item.get("views", 0)) for item in sources))),
+        }
+
     sources = [
         {"source": "YouTube Search", "views": 112000, "percentage": 30.1, "watch_time_hours": 15400},
         {"source": "Suggested Videos", "views": 98000, "percentage": 26.3, "watch_time_hours": 14200},
@@ -268,6 +374,18 @@ def _stub_traffic_sources() -> dict:
 
 
 def _stub_engagement() -> dict:
+    fixture = _load_fixture("engagement")
+    if fixture:
+        return {
+            "total_likes": _safe_int(fixture.get("total_likes", 0)),
+            "total_comments": _safe_int(fixture.get("total_comments", 0)),
+            "total_shares": _safe_int(fixture.get("total_shares", 0)),
+            "likes_per_view": _safe_float(fixture.get("likes_per_view", 0)),
+            "comments_per_view": _safe_float(fixture.get("comments_per_view", 0)),
+            "shares_per_view": _safe_float(fixture.get("shares_per_view", 0)),
+            "avg_engagement_rate": _safe_float(fixture.get("avg_engagement_rate", 0)),
+        }
+
     total_views = 372400
     total_likes = 28200
     total_comments = 3890
@@ -286,6 +404,15 @@ def _stub_engagement() -> dict:
 
 
 def _stub_revenue() -> dict:
+    fixture = _load_fixture("revenue")
+    if fixture and "series" in fixture:
+        return {
+            "series": fixture.get("series", []),
+            "total_revenue": _safe_float(fixture.get("total_revenue", 0)),
+            "avg_rpm": _safe_float(fixture.get("avg_rpm", 0)),
+            "avg_cpm": _safe_float(fixture.get("avg_cpm", 0)),
+        }
+
     today = date.today()
     series = []
     total = 0.0
@@ -308,6 +435,13 @@ def _stub_revenue() -> dict:
 
 
 def _stub_content_performance() -> dict:
+    fixture = _load_fixture("content_performance")
+    if isinstance(fixture, dict):
+        if "types" in fixture:
+            return {"types": fixture.get("types", [])}
+        if "by_type" in fixture:
+            return {"types": fixture.get("by_type", [])}
+
     return {
         "types": [
             {

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Generate realistic fixture JSON files for every analytics platform.
+Generate realistic fixture JSON files for social analytics platforms.
 
 Output: src/backend/fixtures/generated/<platform>.json
 
@@ -22,7 +22,7 @@ from pathlib import Path
 
 FIXTURE_DIR = Path(__file__).resolve().parent.parent / "src" / "backend" / "fixtures" / "generated"
 
-PLATFORMS = ["google_analytics", "youtube", "linkedin", "instagram", "whatsapp"]
+PLATFORMS = ["youtube", "linkedin", "instagram", "whatsapp"]
 
 # ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -364,7 +364,6 @@ def generate_whatsapp(days: int) -> dict:
 # ── main ──────────────────────────────────────────────────────────────────────
 
 GENERATORS = {
-    "google_analytics": generate_google_analytics,
     "youtube": generate_youtube,
     "linkedin": generate_linkedin,
     "instagram": generate_instagram,

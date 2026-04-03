@@ -21,6 +21,7 @@ import { Plus, Search, Grid3X3, List, ArrowUpDown, Eye, Heart, Share2, MessageSq
 import { getIGOverview } from '@/lib/api/ig-api';
 import { getWAOverview } from '@/lib/api/wa-api';
 import { getLIOverview } from '@/lib/api/li-api';
+import { getYTOverview, getYTSubscriberGrowth } from '@/lib/api/yt-api';
 
 const COLORS = ['#E5A100', '#4A90D9', '#50B88C', '#9B6AD4', '#C75B39', '#3AAFA9'];
 
@@ -389,6 +390,28 @@ export function ChannelDashboard({ channel, channelName, channelColor, channelIc
                         reach: overview.total_page_views,
                         ctr: 0,
                     });
+                } else if (channel === 'youtube') {
+                    const [overview, growth] = await Promise.all([
+                        getYTOverview('30daysAgo', 'today'),
+                        getYTSubscriberGrowth('30daysAgo', 'today'),
+                    ]);
+                    if (cancelled) return;
+                    setLiveStats({
+                        channel: 'youtube',
+                        followers: overview.subscribers,
+                        followerGrowth: growth.net_change,
+                        engagement: Math.round(overview.total_views * overview.engagement_rate / 100),
+                        engagementRate: overview.engagement_rate,
+                        impressions: overview.total_views,
+                        reach: overview.views_last_30d,
+                        ctr: 0,
+                    });
+                    setLiveGrowth(
+                        (growth.series || []).map((point) => ({
+                            date: point.date,
+                            value: point.net,
+                        }))
+                    );
                 }
             } catch {
                 // Keep stub data fallback when API is unavailable.
