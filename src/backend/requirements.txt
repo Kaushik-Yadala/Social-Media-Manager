@@ -1,0 +1,15 @@
+fastapi
+uvicorn[standard]
+motor
+pytest
+pydantic
+pydantic-settings
+python-dotenv
+google-analytics-data
+httpx
+pytest-asyncio
+passlib[bcrypt]
+bcrypt==4.0.1
+python-jose[cryptography]
+python-multipart
+pydantic[email]
