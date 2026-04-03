@@ -34,4 +34,15 @@ export const channels: Channel[] = [
         healthScore: 92,
         lastSynced: '2026-03-04T18:28:00Z',
     },
+    {
+        id: 'ch-yt',
+        slug: 'youtube',
+        name: 'YouTube',
+        icon: 'Youtube',
+        color: '#FF0000',
+        isConnected: true,
+        followers: 8750,
+        healthScore: 81,
+        lastSynced: '2026-03-04T18:20:00Z',
+    },
 ];

@@ -5,12 +5,13 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ChartCard, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from '@/components/charts/ChartComponents';
 import { trendingTopics, suggestedActions, trendGrowthTrajectory } from '@/lib/stub-data/predictive';
-import { Lightbulb, TrendingUp, Zap, ArrowRight, Sparkles, Target, Instagram, Linkedin, MessageCircle } from 'lucide-react';
+import { Lightbulb, TrendingUp, Zap, ArrowRight, Sparkles, Target, Instagram, Linkedin, MessageCircle, Youtube } from 'lucide-react';
 
 const channelIcons: Record<string, React.ReactNode> = {
     instagram: <Instagram className="h-3.5 w-3.5" />,
     linkedin: <Linkedin className="h-3.5 w-3.5" />,
     whatsapp: <MessageCircle className="h-3.5 w-3.5" />,
+    youtube: <Youtube className="h-3.5 w-3.5" />,
 };
 
 const signalColors: Record<string, string> = {

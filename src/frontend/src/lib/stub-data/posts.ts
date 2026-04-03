@@ -1,4 +1,4 @@
-import { InstagramPost, LinkedInPost, WhatsAppMessage, Post } from '@/types';
+import { InstagramPost, LinkedInPost, WhatsAppMessage, YouTubeVideo, Post } from '@/types';
 
 // --- Instagram Posts ---
 const instagramPosts: InstagramPost[] = [
@@ -76,8 +76,36 @@ const whatsappMessages: WhatsAppMessage[] = [
     },
 ];
 
+// --- YouTube Videos ---
+const youtubeVideos: YouTubeVideo[] = [
+    {
+        id: 'yt-vid-1', channel: 'youtube', type: 'video', caption: 'How We Built a Giant Mural in 48 Hours | Club Artizen', mediaUrl: '/placeholder-yt-video.jpg', publishedAt: '2026-03-03T12:00:00Z',
+        performance: { views: 45200, watchTimeHours: 3800, likes: 2340, comments: 189, shares: 456, subscribersGained: 234, estimatedRevenue: 128.50, impressions: 89000, impressionsCTR: 5.1, avgViewDuration: 302, avgViewPercentage: 68.2 },
+    },
+    {
+        id: 'yt-vid-2', channel: 'youtube', type: 'short', caption: '60-Second Art Challenge: Painting with Only Primary Colors 🎨', mediaUrl: '/placeholder-yt-short.jpg', publishedAt: '2026-03-02T15:00:00Z',
+        performance: { views: 128000, watchTimeHours: 1420, likes: 8900, comments: 456, shares: 2340, subscribersGained: 567, estimatedRevenue: 89.20, impressions: 342000, impressionsCTR: 3.7, avgViewDuration: 42, avgViewPercentage: 92.5 },
+    },
+    {
+        id: 'yt-vid-3', channel: 'youtube', type: 'live', caption: 'LIVE: Friday Night Art Jam — Join Us and Create Together! 🔴', mediaUrl: '/placeholder-yt-live.jpg', publishedAt: '2026-02-28T19:00:00Z',
+        performance: { views: 12400, watchTimeHours: 8200, likes: 1890, comments: 1245, shares: 89, subscribersGained: 145, estimatedRevenue: 45.80, impressions: 28000, impressionsCTR: 4.4, avgViewDuration: 2380, avgViewPercentage: 35.1 },
+    },
+    {
+        id: 'yt-vid-4', channel: 'youtube', type: 'video', caption: 'Top 10 Art Techniques Every Beginner Should Know | Full Tutorial', mediaUrl: '/placeholder-yt-tutorial.jpg', publishedAt: '2026-02-25T10:00:00Z',
+        performance: { views: 67800, watchTimeHours: 12400, likes: 4560, comments: 312, shares: 890, subscribersGained: 456, estimatedRevenue: 234.60, impressions: 156000, impressionsCTR: 4.3, avgViewDuration: 658, avgViewPercentage: 72.4 },
+    },
+    {
+        id: 'yt-vid-5', channel: 'youtube', type: 'premiere', caption: 'Club Artizen 2026 Collection Reveal — World Premiere 🌍', mediaUrl: '/placeholder-yt-premiere.jpg', publishedAt: '2026-02-20T18:00:00Z',
+        performance: { views: 23400, watchTimeHours: 4600, likes: 3120, comments: 567, shares: 345, subscribersGained: 289, estimatedRevenue: 167.30, impressions: 52000, impressionsCTR: 4.5, avgViewDuration: 708, avgViewPercentage: 58.9 },
+    },
+    {
+        id: 'yt-vid-6', channel: 'youtube', type: 'short', caption: 'POV: You find a hidden art studio in your city 🏙️✨', mediaUrl: '/placeholder-yt-short2.jpg', publishedAt: '2026-03-01T08:00:00Z',
+        performance: { views: 95600, watchTimeHours: 980, likes: 6780, comments: 234, shares: 1560, subscribersGained: 389, estimatedRevenue: 62.40, impressions: 278000, impressionsCTR: 3.4, avgViewDuration: 37, avgViewPercentage: 88.7 },
+    },
+];
+
 // Combined and accessor
-export const allPosts: Post[] = [...instagramPosts, ...linkedinPosts, ...whatsappMessages];
+export const allPosts: Post[] = [...instagramPosts, ...linkedinPosts, ...whatsappMessages, ...youtubeVideos];
 
 export function getPostsByChannel(channel: string): Post[] {
     return allPosts.filter(p => p.channel === channel);

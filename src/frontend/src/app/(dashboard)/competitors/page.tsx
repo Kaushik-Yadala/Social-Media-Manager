@@ -82,6 +82,7 @@ export default function CompetitorsPage() {
                                 <TableHead>Company</TableHead>
                                 <TableHead className="text-right">Instagram</TableHead>
                                 <TableHead className="text-right">LinkedIn</TableHead>
+                                <TableHead className="text-right">YouTube</TableHead>
                                 <TableHead className="text-right">Engagement</TableHead>
                                 <TableHead className="text-right">Posts/Week</TableHead>
                                 <TableHead className="text-right">Growth</TableHead>
@@ -92,6 +93,7 @@ export default function CompetitorsPage() {
                                 <TableCell className="font-medium text-amber-800">Club Artizen (You)</TableCell>
                                 <TableCell className="text-right">28,400</TableCell>
                                 <TableCell className="text-right">12,300</TableCell>
+                                <TableCell className="text-right">8,750</TableCell>
                                 <TableCell className="text-right">4.8%</TableCell>
                                 <TableCell className="text-right">10</TableCell>
                                 <TableCell className="text-right text-emerald-600">+5.2%</TableCell>
@@ -101,6 +103,7 @@ export default function CompetitorsPage() {
                                     <TableCell className="font-medium">{c.name}</TableCell>
                                     <TableCell className="text-right">{c.metrics.instagram.toLocaleString()}</TableCell>
                                     <TableCell className="text-right">{c.metrics.linkedin.toLocaleString()}</TableCell>
+                                    <TableCell className="text-right">{c.metrics.youtube.toLocaleString()}</TableCell>
                                     <TableCell className="text-right">{c.metrics.engagement}%</TableCell>
                                     <TableCell className="text-right">{c.metrics.postsPerWeek}</TableCell>
                                     <TableCell className="text-right text-emerald-600">+{c.metrics.growth}%</TableCell>

@@ -12,13 +12,14 @@ import { channelStats, followerGrowthTrend, engagementTrend } from '@/lib/stub-d
 import { mainDashboardWidgets } from '@/lib/stub-data/widgets';
 import { alerts } from '@/lib/stub-data/alerts';
 import { WidgetDefinition } from '@/types';
-import { Users, Eye, TrendingUp, MousePointerClick, Plus, Instagram, Linkedin, MessageCircle, ArrowRight, X } from 'lucide-react';
+import { Users, Eye, TrendingUp, MousePointerClick, Plus, Instagram, Linkedin, MessageCircle, Youtube, ArrowRight, X } from 'lucide-react';
 import { PieChart, Pie, Cell } from 'recharts';
 
 const channelIcons: Record<string, React.ReactNode> = {
     instagram: <Instagram className="h-4 w-4" />,
     linkedin: <Linkedin className="h-4 w-4" />,
     whatsapp: <MessageCircle className="h-4 w-4" />,
+    youtube: <Youtube className="h-4 w-4" />,
 };
 
 const COLORS = ['#E5A100', '#4A90D9', '#50B88C', '#9B6AD4', '#C75B39', '#3AAFA9'];
@@ -150,6 +151,7 @@ export default function DashboardPage() {
         Instagram: followerGrowthTrend[0].data[i]?.value || 0,
         LinkedIn: followerGrowthTrend[1].data[i]?.value || 0,
         WhatsApp: followerGrowthTrend[2].data[i]?.value || 0,
+        YouTube: followerGrowthTrend[3].data[i]?.value || 0,
     }));
 
     const addWidget = (w: WidgetDefinition) => {
@@ -262,6 +264,7 @@ export default function DashboardPage() {
                                 <Area type="monotone" dataKey="Instagram" stroke="#E4405F" fill="#E4405F" fillOpacity={0.1} strokeWidth={2} />
                                 <Area type="monotone" dataKey="LinkedIn" stroke="#0A66C2" fill="#0A66C2" fillOpacity={0.1} strokeWidth={2} />
                                 <Area type="monotone" dataKey="WhatsApp" stroke="#25D366" fill="#25D366" fillOpacity={0.1} strokeWidth={2} />
+                                <Area type="monotone" dataKey="YouTube" stroke="#FF0000" fill="#FF0000" fillOpacity={0.1} strokeWidth={2} />
                                 <Legend />
                             </AreaChart>
                         </ResponsiveContainer>

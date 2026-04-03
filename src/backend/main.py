@@ -7,8 +7,11 @@ from core.database import db
 from core.config import settings
 
 from routes.ga_routes import router as ga_router
+from routes.yt_routes import router as yt_router
 from routes.auth_routes import router as auth_router
 from routes.li_routes import router as li_router
+from routes.ig_routes import router as ig_router
+from routes.wa_routes import router as wa_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -39,8 +42,11 @@ app.add_middleware(
 
 # ── Routers ──────────────────────────────────────────────────────────────────
 app.include_router(ga_router)
+app.include_router(yt_router)
 app.include_router(auth_router, prefix="/auth", tags=["Auth"])
 app.include_router(li_router)
+app.include_router(ig_router)
+app.include_router(wa_router)
 
 
 # ── Root / Health ─────────────────────────────────────────────────────────────

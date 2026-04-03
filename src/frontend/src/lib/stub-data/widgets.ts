@@ -48,11 +48,26 @@ export const whatsappWidgets: WidgetDefinition[] = [
     { id: 'wa-resolution', name: 'Resolution Metrics', description: 'Avg resolution time, responses until resolution', category: 'Performance', defaultSize: 'sm', minW: 2, minH: 2, channel: 'whatsapp', apiMetric: 'resolutionMetrics', chartType: 'kpi-cards' },
 ];
 
+// YouTube-specific widgets (based on YouTube Data API v3 / Analytics API)
+export const youtubeWidgets: WidgetDefinition[] = [
+    { id: 'yt-views', name: 'Views Over Time', description: 'Daily view count trend across all videos', category: 'Views', defaultSize: 'md', minW: 3, minH: 2, channel: 'youtube', apiMetric: 'views', chartType: 'area' },
+    { id: 'yt-subscriber-growth', name: 'Subscriber Growth', description: 'Net subscribers gained/lost over time', category: 'Audience', defaultSize: 'md', minW: 3, minH: 2, channel: 'youtube', apiMetric: 'subscribersGained,subscribersLost', chartType: 'line' },
+    { id: 'yt-engagement', name: 'Engagement Breakdown', description: 'Likes, comments, shares per video', category: 'Engagement', defaultSize: 'md', minW: 3, minH: 2, channel: 'youtube', apiMetric: 'likes,comments,shares', chartType: 'stacked-bar' },
+    { id: 'yt-watch-time', name: 'Watch Time Analysis', description: 'Total watch time hours and average view duration', category: 'Performance', defaultSize: 'md', minW: 3, minH: 2, channel: 'youtube', apiMetric: 'estimatedMinutesWatched', chartType: 'area' },
+    { id: 'yt-content-perf', name: 'Performance by Video Type', description: 'Views and engagement by video, short, live, premiere', category: 'Content', defaultSize: 'md', minW: 3, minH: 2, channel: 'youtube', apiMetric: 'views,engagement', chartType: 'grouped-bar' },
+    { id: 'yt-ctr', name: 'Impressions CTR', description: 'Click-through rate from impressions to views', category: 'Performance', defaultSize: 'sm', minW: 2, minH: 2, channel: 'youtube', apiMetric: 'impressionsCTR', chartType: 'kpi-sparkline' },
+    { id: 'yt-traffic-source', name: 'Traffic Sources', description: 'Where viewers find your videos: search, suggested, external', category: 'Reach', defaultSize: 'md', minW: 3, minH: 2, channel: 'youtube', apiMetric: 'trafficSource', chartType: 'donut' },
+    { id: 'yt-demographics', name: 'Viewer Demographics', description: 'Age, gender, and geography of your audience', category: 'Audience', defaultSize: 'lg', minW: 4, minH: 3, channel: 'youtube', apiMetric: 'viewerDemographics', chartType: 'pie-bar' },
+    { id: 'yt-revenue', name: 'Estimated Revenue', description: 'Ad revenue, RPM, and CPM trends', category: 'Revenue', defaultSize: 'sm', minW: 2, minH: 2, channel: 'youtube', apiMetric: 'estimatedRevenue', chartType: 'kpi-cards' },
+    { id: 'yt-top-videos', name: 'Top Performing Videos', description: 'Highest view and engagement videos this month', category: 'Content', defaultSize: 'md', minW: 3, minH: 3, channel: 'youtube', apiMetric: 'topVideos', chartType: 'ranked-list' },
+];
+
 export function getWidgetsForChannel(channel: string): WidgetDefinition[] {
     switch (channel) {
         case 'instagram': return instagramWidgets;
         case 'linkedin': return linkedinWidgets;
         case 'whatsapp': return whatsappWidgets;
+        case 'youtube': return youtubeWidgets;
         default: return mainDashboardWidgets;
     }
 }

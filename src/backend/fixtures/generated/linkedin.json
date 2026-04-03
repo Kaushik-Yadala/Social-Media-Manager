@@ -1,0 +1,609 @@
+{
+  "overview": {
+    "followers": 4101,
+    "followers_change": 2.1,
+    "impressions": 55861,
+    "impressions_change": 14.0,
+    "engagement_rate": 7.54,
+    "engagement_rate_change": 1.8,
+    "click_through_rate": 1.05,
+    "ctr_change": 0.5,
+    "shares": 2982,
+    "shares_change": -3.0,
+    "comments": 2853,
+    "comments_change": -0.5,
+    "unique_visitors": 9413,
+    "unique_visitors_change": 1.0,
+    "period_days": 30
+  },
+  "follower_growth": {
+    "series": [
+      {
+        "date": "2026-03-05",
+        "value": 29
+      },
+      {
+        "date": "2026-03-06",
+        "value": 20
+      },
+      {
+        "date": "2026-03-07",
+        "value": 19
+      },
+      {
+        "date": "2026-03-08",
+        "value": 52
+      },
+      {
+        "date": "2026-03-09",
+        "value": 12
+      },
+      {
+        "date": "2026-03-10",
+        "value": 7
+      },
+      {
+        "date": "2026-03-11",
+        "value": 14
+      },
+      {
+        "date": "2026-03-12",
+        "value": 58
+      },
+      {
+        "date": "2026-03-13",
+        "value": 17
+      },
+      {
+        "date": "2026-03-14",
+        "value": 14
+      },
+      {
+        "date": "2026-03-15",
+        "value": 55
+      },
+      {
+        "date": "2026-03-16",
+        "value": 20
+      },
+      {
+        "date": "2026-03-17",
+        "value": 25
+      },
+      {
+        "date": "2026-03-18",
+        "value": 9
+      },
+      {
+        "date": "2026-03-19",
+        "value": 58
+      },
+      {
+        "date": "2026-03-20",
+        "value": 24
+      },
+      {
+        "date": "2026-03-21",
+        "value": 41
+      },
+      {
+        "date": "2026-03-22",
+        "value": 27
+      },
+      {
+        "date": "2026-03-23",
+        "value": 13
+      },
+      {
+        "date": "2026-03-24",
+        "value": 48
+      },
+      {
+        "date": "2026-03-25",
+        "value": 50
+      },
+      {
+        "date": "2026-03-26",
+        "value": 43
+      },
+      {
+        "date": "2026-03-27",
+        "value": 20
+      },
+      {
+        "date": "2026-03-28",
+        "value": 5
+      },
+      {
+        "date": "2026-03-29",
+        "value": 41
+      },
+      {
+        "date": "2026-03-30",
+        "value": 37
+      },
+      {
+        "date": "2026-03-31",
+        "value": 56
+      },
+      {
+        "date": "2026-04-01",
+        "value": 35
+      },
+      {
+        "date": "2026-04-02",
+        "value": 25
+      },
+      {
+        "date": "2026-04-03",
+        "value": 7
+      }
+    ],
+    "total_gained": 1672,
+    "total_lost": 187,
+    "net_change": 1088,
+    "period_days": 30
+  },
+  "demographics": {
+    "by_function": [
+      {
+        "category": "Engineering",
+        "value": 22.4,
+        "count": 3428
+      },
+      {
+        "category": "Marketing",
+        "value": 22.3,
+        "count": 2593
+      },
+      {
+        "category": "Sales",
+        "value": 15.5,
+        "count": 1182
+      }
+    ],
+    "by_seniority": [
+      {
+        "category": "Senior",
+        "value": 23.7,
+        "count": 2125
+      },
+      {
+        "category": "Manager",
+        "value": 24.2,
+        "count": 2504
+      },
+      {
+        "category": "Entry",
+        "value": 13.3,
+        "count": 925
+      }
+    ],
+    "by_industry": [
+      {
+        "category": "Technology",
+        "value": 25.0,
+        "count": 4375
+      },
+      {
+        "category": "Financial Services",
+        "value": 16.5,
+        "count": 1598
+      },
+      {
+        "category": "Healthcare",
+        "value": 9.0,
+        "count": 1293
+      }
+    ],
+    "by_location": [
+      {
+        "category": "India",
+        "value": 35.5,
+        "count": 5291
+      },
+      {
+        "category": "United States",
+        "value": 22.5,
+        "count": 3349
+      },
+      {
+        "category": "United Kingdom",
+        "value": 6.6,
+        "count": 1460
+      }
+    ],
+    "period_days": 30
+  },
+  "top_posts": {
+    "posts": [
+      {
+        "post_id": "li_post_0",
+        "title": "Sample LinkedIn Post #0 about analytics insights.",
+        "published": "2026-03-29T17:44:56.521738",
+        "impressions": 9837,
+        "clicks": 916,
+        "reactions": 121,
+        "comments": 18,
+        "shares": 7,
+        "engagement_rate": 2.59,
+        "post_type": "article"
+      },
+      {
+        "post_id": "li_post_1",
+        "title": "Sample LinkedIn Post #1 about analytics insights.",
+        "published": "2026-03-27T17:44:56.521763",
+        "impressions": 3177,
+        "clicks": 663,
+        "reactions": 470,
+        "comments": 78,
+        "shares": 39,
+        "engagement_rate": 10.31,
+        "post_type": "document"
+      },
+      {
+        "post_id": "li_post_2",
+        "title": "Sample LinkedIn Post #2 about analytics insights.",
+        "published": "2026-03-13T17:44:56.521777",
+        "impressions": 5543,
+        "clicks": 785,
+        "reactions": 157,
+        "comments": 9,
+        "shares": 38,
+        "engagement_rate": 4.16,
+        "post_type": "video"
+      },
+      {
+        "post_id": "li_post_3",
+        "title": "Sample LinkedIn Post #3 about analytics insights.",
+        "published": "2026-03-25T17:44:56.521787",
+        "impressions": 4197,
+        "clicks": 609,
+        "reactions": 270,
+        "comments": 32,
+        "shares": 35,
+        "engagement_rate": 8.6,
+        "post_type": "image"
+      },
+      {
+        "post_id": "li_post_4",
+        "title": "Sample LinkedIn Post #4 about analytics insights.",
+        "published": "2026-04-01T17:44:56.521797",
+        "impressions": 4295,
+        "clicks": 895,
+        "reactions": 443,
+        "comments": 13,
+        "shares": 16,
+        "engagement_rate": 7.36,
+        "post_type": "poll"
+      },
+      {
+        "post_id": "li_post_5",
+        "title": "Sample LinkedIn Post #5 about analytics insights.",
+        "published": "2026-03-24T17:44:56.521808",
+        "impressions": 8678,
+        "clicks": 896,
+        "reactions": 54,
+        "comments": 67,
+        "shares": 24,
+        "engagement_rate": 7.22,
+        "post_type": "video"
+      },
+      {
+        "post_id": "li_post_6",
+        "title": "Sample LinkedIn Post #6 about analytics insights.",
+        "published": "2026-03-18T17:44:56.521817",
+        "impressions": 2450,
+        "clicks": 752,
+        "reactions": 82,
+        "comments": 69,
+        "shares": 26,
+        "engagement_rate": 5.96,
+        "post_type": "document"
+      },
+      {
+        "post_id": "li_post_7",
+        "title": "Sample LinkedIn Post #7 about analytics insights.",
+        "published": "2026-04-02T17:44:56.521827",
+        "impressions": 3651,
+        "clicks": 154,
+        "reactions": 299,
+        "comments": 13,
+        "shares": 3,
+        "engagement_rate": 9.08,
+        "post_type": "poll"
+      }
+    ],
+    "period_days": 30
+  },
+  "engagement": {
+    "series": [
+      {
+        "date": "2026-03-05",
+        "value": 5.21
+      },
+      {
+        "date": "2026-03-06",
+        "value": 8.22
+      },
+      {
+        "date": "2026-03-07",
+        "value": 9.62
+      },
+      {
+        "date": "2026-03-08",
+        "value": 2.46
+      },
+      {
+        "date": "2026-03-09",
+        "value": 7.69
+      },
+      {
+        "date": "2026-03-10",
+        "value": 3.79
+      },
+      {
+        "date": "2026-03-11",
+        "value": 2.78
+      },
+      {
+        "date": "2026-03-12",
+        "value": 3.16
+      },
+      {
+        "date": "2026-03-13",
+        "value": 1.58
+      },
+      {
+        "date": "2026-03-14",
+        "value": 7.1
+      },
+      {
+        "date": "2026-03-15",
+        "value": 3.06
+      },
+      {
+        "date": "2026-03-16",
+        "value": 4.87
+      },
+      {
+        "date": "2026-03-17",
+        "value": 2.39
+      },
+      {
+        "date": "2026-03-18",
+        "value": 7.27
+      },
+      {
+        "date": "2026-03-19",
+        "value": 3.37
+      },
+      {
+        "date": "2026-03-20",
+        "value": 3.49
+      },
+      {
+        "date": "2026-03-21",
+        "value": 5.46
+      },
+      {
+        "date": "2026-03-22",
+        "value": 6.06
+      },
+      {
+        "date": "2026-03-23",
+        "value": 8.07
+      },
+      {
+        "date": "2026-03-24",
+        "value": 6.29
+      },
+      {
+        "date": "2026-03-25",
+        "value": 3.98
+      },
+      {
+        "date": "2026-03-26",
+        "value": 4.48
+      },
+      {
+        "date": "2026-03-27",
+        "value": 6.08
+      },
+      {
+        "date": "2026-03-28",
+        "value": 5.69
+      },
+      {
+        "date": "2026-03-29",
+        "value": 4.08
+      },
+      {
+        "date": "2026-03-30",
+        "value": 3.5
+      },
+      {
+        "date": "2026-03-31",
+        "value": 8.22
+      },
+      {
+        "date": "2026-04-01",
+        "value": 4.55
+      },
+      {
+        "date": "2026-04-02",
+        "value": 5.95
+      },
+      {
+        "date": "2026-04-03",
+        "value": 9.41
+      }
+    ],
+    "avg_engagement_rate": 3.19,
+    "total_reactions": 5066,
+    "total_comments": 703,
+    "total_shares": 1994,
+    "total_clicks": 7499,
+    "period_days": 30
+  },
+  "page_views": {
+    "series": [
+      {
+        "date": "2026-03-05",
+        "value": 169
+      },
+      {
+        "date": "2026-03-06",
+        "value": 222
+      },
+      {
+        "date": "2026-03-07",
+        "value": 56
+      },
+      {
+        "date": "2026-03-08",
+        "value": 65
+      },
+      {
+        "date": "2026-03-09",
+        "value": 279
+      },
+      {
+        "date": "2026-03-10",
+        "value": 126
+      },
+      {
+        "date": "2026-03-11",
+        "value": 210
+      },
+      {
+        "date": "2026-03-12",
+        "value": 222
+      },
+      {
+        "date": "2026-03-13",
+        "value": 255
+      },
+      {
+        "date": "2026-03-14",
+        "value": 199
+      },
+      {
+        "date": "2026-03-15",
+        "value": 203
+      },
+      {
+        "date": "2026-03-16",
+        "value": 142
+      },
+      {
+        "date": "2026-03-17",
+        "value": 123
+      },
+      {
+        "date": "2026-03-18",
+        "value": 235
+      },
+      {
+        "date": "2026-03-19",
+        "value": 292
+      },
+      {
+        "date": "2026-03-20",
+        "value": 295
+      },
+      {
+        "date": "2026-03-21",
+        "value": 170
+      },
+      {
+        "date": "2026-03-22",
+        "value": 232
+      },
+      {
+        "date": "2026-03-23",
+        "value": 217
+      },
+      {
+        "date": "2026-03-24",
+        "value": 233
+      },
+      {
+        "date": "2026-03-25",
+        "value": 77
+      },
+      {
+        "date": "2026-03-26",
+        "value": 141
+      },
+      {
+        "date": "2026-03-27",
+        "value": 235
+      },
+      {
+        "date": "2026-03-28",
+        "value": 40
+      },
+      {
+        "date": "2026-03-29",
+        "value": 286
+      },
+      {
+        "date": "2026-03-30",
+        "value": 58
+      },
+      {
+        "date": "2026-03-31",
+        "value": 91
+      },
+      {
+        "date": "2026-04-01",
+        "value": 109
+      },
+      {
+        "date": "2026-04-02",
+        "value": 96
+      },
+      {
+        "date": "2026-04-03",
+        "value": 152
+      }
+    ],
+    "total_views": 7675,
+    "unique_visitors": 2967,
+    "period_days": 30
+  },
+  "content_breakdown": {
+    "breakdown": [
+      {
+        "content_type": "article",
+        "count": 9,
+        "avg_impressions": 4481,
+        "avg_engagement_rate": 4.96,
+        "avg_clicks": 468.8
+      },
+      {
+        "content_type": "image",
+        "count": 30,
+        "avg_impressions": 2548,
+        "avg_engagement_rate": 7.05,
+        "avg_clicks": 88.2
+      },
+      {
+        "content_type": "video",
+        "count": 9,
+        "avg_impressions": 2730,
+        "avg_engagement_rate": 5.34,
+        "avg_clicks": 482.6
+      },
+      {
+        "content_type": "document",
+        "count": 6,
+        "avg_impressions": 3245,
+        "avg_engagement_rate": 6.42,
+        "avg_clicks": 394.5
+      }
+    ],
+    "period_days": 30
+  }
+}

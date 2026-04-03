@@ -11,6 +11,10 @@ class Settings(BaseSettings):
     ga4_property_id: str = ""
     google_application_credentials: str = ""
 
+    # YouTube Data API v3
+    youtube_api_key: str = ""
+    youtube_channel_id: str = ""
+
     # Database
     mongodb_uri: str = "mongodb://localhost:27017" # default fallback
     database_name: str = "club_artizen_analytics"
@@ -32,6 +36,11 @@ class Settings(BaseSettings):
     def ga_credentials_available(self) -> bool:
         """True when a property ID and credentials path are both set."""
         return bool(self.ga4_property_id and self.google_application_credentials)
+
+    @property
+    def yt_credentials_available(self) -> bool:
+        """True when a YouTube API key and channel ID are both set."""
+        return bool(self.youtube_api_key and self.youtube_channel_id)
 
     @property
     def cors_origins_list(self) -> list[str]:
