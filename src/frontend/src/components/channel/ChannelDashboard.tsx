@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useCallback, useRef } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -16,8 +16,11 @@ import { getWidgetsForChannel } from '@/lib/stub-data/widgets';
 import { getPostsByChannel } from '@/lib/stub-data/posts';
 import { channels } from '@/lib/stub-data/channels';
 import { followerGrowthTrend, geographyData, ageData, channelStats } from '@/lib/stub-data/statistics';
-import { ChannelSlug, Post, InstagramPost, LinkedInPost, WhatsAppMessage, YouTubeVideo, WidgetDefinition } from '@/types';
+import { ChannelSlug, ChannelStats, TimeSeriesPoint, Post, InstagramPost, LinkedInPost, WhatsAppMessage, YouTubeVideo, WidgetDefinition } from '@/types';
 import { Plus, Search, Grid3X3, List, ArrowUpDown, Eye, Heart, Share2, MessageSquare, Bookmark, Clock, MousePointerClick, Users, TrendingUp, BarChart3, GripVertical } from 'lucide-react';
+import { getIGOverview } from '@/lib/api/ig-api';
+import { getWAOverview } from '@/lib/api/wa-api';
+import { getLIOverview } from '@/lib/api/li-api';
 
 const COLORS = ['#E5A100', '#4A90D9', '#50B88C', '#9B6AD4', '#C75B39', '#3AAFA9'];
 
@@ -32,10 +35,12 @@ function seededRandom(seed: string, index: number): number {
 }
 
 // ---- Widget Renderer ----
-function WidgetRenderer({ widget, channel }: { widget: WidgetDefinition; channel: ChannelSlug }) {
-    const chIdx = ['instagram', 'linkedin', 'whatsapp', 'youtube'].indexOf(channel);
-    const stats = channelStats.find(s => s.channel === channel);
-    const growthData = followerGrowthTrend[chIdx]?.data.map(p => ({ date: p.date.slice(5), value: p.value })) || [];
+function WidgetRenderer({ widget, channel, stats, growthData }: {
+    widget: WidgetDefinition;
+    channel: ChannelSlug;
+    stats: ChannelStats | null;
+    growthData: { date: string; value: number }[];
+}) {
 
     // Render different chart types based on widget definition
     if (widget.chartType === 'line' || widget.chartType === 'area') {
@@ -337,6 +342,69 @@ interface ChannelDashboardProps {
 }
 
 export function ChannelDashboard({ channel, channelName, channelColor, channelIcon }: ChannelDashboardProps) {
+    const [liveStats, setLiveStats] = useState<ChannelStats | null>(null);
+    const [liveGrowth, setLiveGrowth] = useState<TimeSeriesPoint[] | null>(null);
+
+    useEffect(() => {
+        let cancelled = false;
+
+        const loadLiveData = async () => {
+            try {
+                if (channel === 'instagram') {
+                    const overview = await getIGOverview(30);
+                    if (cancelled) return;
+                    setLiveStats({
+                        channel: 'instagram',
+                        followers: overview.followers,
+                        followerGrowth: overview.followers_change,
+                        engagement: Math.round(overview.followers * overview.engagement_rate / 100),
+                        engagementRate: overview.engagement_rate,
+                        impressions: overview.impressions,
+                        reach: overview.reach,
+                        ctr: 0,
+                    });
+                } else if (channel === 'whatsapp') {
+                    const overview = await getWAOverview(30);
+                    if (cancelled) return;
+                    setLiveStats({
+                        channel: 'whatsapp',
+                        followers: overview.conversations,
+                        followerGrowth: overview.conversations_change,
+                        engagement: overview.messages_read,
+                        engagementRate: overview.read_rate,
+                        impressions: overview.messages_sent,
+                        reach: overview.messages_delivered,
+                        ctr: overview.delivery_rate,
+                    });
+                } else if (channel === 'linkedin') {
+                    const overview = await getLIOverview('30daysAgo', 'today');
+                    if (cancelled) return;
+                    setLiveStats({
+                        channel: 'linkedin',
+                        followers: overview.total_followers,
+                        followerGrowth: overview.new_followers,
+                        engagement: Math.round(overview.total_followers * overview.avg_engagement_rate / 100),
+                        engagementRate: overview.avg_engagement_rate,
+                        impressions: overview.total_post_impressions,
+                        reach: overview.total_page_views,
+                        ctr: 0,
+                    });
+                }
+            } catch {
+                // Keep stub data fallback when API is unavailable.
+                setLiveStats(null);
+            }
+        };
+
+        setLiveStats(null);
+        setLiveGrowth(null);
+        loadLiveData();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [channel]);
+
     const widgets = getWidgetsForChannel(channel);
     const posts = getPostsByChannel(channel);
     const [activeWidgets, setActiveWidgets] = useState<WidgetDefinition[]>(widgets.slice(0, 6));
@@ -427,7 +495,10 @@ export function ChannelDashboard({ channel, channelName, channelColor, channelIc
         return result;
     }, [posts, typeFilter, searchQ, sortBy]);
 
-    const stats = channelStats.find(s => s.channel === channel);
+    const stats = liveStats || channelStats.find(s => s.channel === channel) || null;
+    const chIdx = ['instagram', 'linkedin', 'whatsapp', 'youtube'].indexOf(channel);
+    const growthData = (liveGrowth || followerGrowthTrend[chIdx]?.data || [])
+        .map(p => ({ date: p.date.slice(5), value: p.value }));
     const postTypes = channel === 'instagram' ? ['feed', 'reel', 'story', 'carousel'] : channel === 'linkedin' ? ['post', 'article', 'document', 'video'] : channel === 'youtube' ? ['video', 'short', 'live', 'premiere'] : ['template', 'session', 'interactive'];
 
     const addWidget = (w: WidgetDefinition) => {
@@ -545,7 +616,7 @@ export function ChannelDashboard({ channel, channelName, channelColor, channelIc
                                 <button onClick={() => removeWidget(w.id)} className="absolute top-1.5 right-1.5 z-10 opacity-0 group-hover:opacity-100 transition-opacity bg-white rounded-full p-1 shadow-sm text-stone-400 hover:text-red-500 hover:bg-red-50">
                                     ×
                                 </button>
-                                <WidgetRenderer widget={w} channel={channel} />
+                                <WidgetRenderer widget={w} channel={channel} stats={stats} growthData={growthData} />
                             </Card>
                         ))}
                         {activeWidgets.length === 0 && (
