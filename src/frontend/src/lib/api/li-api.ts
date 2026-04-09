@@ -51,6 +51,73 @@ export interface LIOverview {
     avg_engagement_rate: number;
 }
 
+// Conversion API Interfaces
+export interface LIConversion {
+    date: string;
+    conversion_id: string;
+    campaign_id: string;
+    campaign_name: string;
+    conversion_type: string;
+    conversion_value: number;
+    currency: string;
+    user_id?: string;
+    email?: string;
+}
+
+export interface LIConversionSummary {
+    date: string;
+    total_conversions: number;
+    total_conversion_value: number;
+    avg_conversion_value: number;
+    conversion_rate: number;
+    unique_conversions: number;
+}
+
+export interface LIConversionResponse {
+    conversions: LIConversion[];
+    summary: LIConversionSummary;
+}
+
+export interface LICampaignPerformance {
+    campaign_id: string;
+    campaign_name: string;
+    spend: number;
+    conversions: number;
+    conversion_value: number;
+    cpc: number;
+    roas: number;
+    ctr: number;
+    impressions: number;
+    clicks: number;
+    status: string;
+}
+
+export interface LICampaignConversionResponse {
+    campaigns: LICampaignPerformance[];
+    total_spend: number;
+    total_conversions: number;
+    total_conversion_value: number;
+    overall_roas: number;
+}
+
+export interface LIROI {
+    campaign_id: string;
+    campaign_name: string;
+    total_spend: number;
+    total_revenue: number;
+    roi_percentage: number;
+    roi_multiplier: number;
+    payback_period_days?: number;
+    break_even_date?: string;
+}
+
+export interface LIROIResponse {
+    roi_data: LIROI[];
+    portfolio_roi: number;
+    total_spend: number;
+    total_revenue: number;
+}
+
 class LinkedInAPIError extends Error {
     constructor(message: string, public status?: number) {
         super(message);
@@ -138,3 +205,91 @@ export async function getLIOverview(startDate: string, endDate: string) {
     }
 }
 
+/** Get LinkedIn Conversions */
+export async function getLIConversions(startDate: string, endDate: string) {
+    try {
+        return await fetchLI<LIConversionResponse>('/conversions', { start_date: startDate, end_date: endDate });
+    } catch (e) {
+        console.warn('getLIConversions: falling back to stubs —', (e as Error).message);
+        return {
+            conversions: [
+                {
+                    date: '2026-04-01',
+                    conversion_id: 'conv_example_1',
+                    campaign_id: 'camp_example',
+                    campaign_name: 'B2B Lead Generation',
+                    conversion_type: 'lead_submit',
+                    conversion_value: 50.0,
+                    currency: 'USD',
+                },
+            ],
+            summary: {
+                date: '2026-04-09',
+                total_conversions: 45,
+                total_conversion_value: 2250.0,
+                avg_conversion_value: 50.0,
+                conversion_rate: 2.5,
+                unique_conversions: 42,
+            },
+        };
+    }
+}
+
+/** Get LinkedIn Campaign Performance */
+export async function getLICampaignPerformance(startDate: string, endDate: string) {
+    try {
+        return await fetchLI<LICampaignConversionResponse>('/campaigns/performance', {
+            start_date: startDate,
+            end_date: endDate,
+        });
+    } catch (e) {
+        console.warn('getLICampaignPerformance: falling back to stubs —', (e as Error).message);
+        return {
+            campaigns: [
+                {
+                    campaign_id: 'camp_example',
+                    campaign_name: 'B2B Lead Generation',
+                    spend: 5000.0,
+                    conversions: 95,
+                    conversion_value: 4750.0,
+                    cpc: 52.63,
+                    roas: 0.95,
+                    ctr: 3.2,
+                    impressions: 125000,
+                    clicks: 4000,
+                    status: 'active',
+                },
+            ],
+            total_spend: 5000.0,
+            total_conversions: 95,
+            total_conversion_value: 4750.0,
+            overall_roas: 0.95,
+        };
+    }
+}
+
+/** Get LinkedIn ROI Analysis */
+export async function getLIROI(startDate: string, endDate: string) {
+    try {
+        return await fetchLI<LIROIResponse>('/roi', { start_date: startDate, end_date: endDate });
+    } catch (e) {
+        console.warn('getLIROI: falling back to stubs —', (e as Error).message);
+        return {
+            roi_data: [
+                {
+                    campaign_id: 'camp_example',
+                    campaign_name: 'B2B Lead Generation',
+                    total_spend: 5000.0,
+                    total_revenue: 9500.0,
+                    roi_percentage: 90.0,
+                    roi_multiplier: 1.9,
+                    payback_period_days: 15,
+                    break_even_date: '2026-03-25',
+                },
+            ],
+            portfolio_roi: 90.0,
+            total_spend: 5000.0,
+            total_revenue: 9500.0,
+        };
+    }
+}

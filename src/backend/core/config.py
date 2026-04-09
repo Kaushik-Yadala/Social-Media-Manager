@@ -15,6 +15,15 @@ class Settings(BaseSettings):
     youtube_api_key: str = ""
     youtube_channel_id: str = ""
 
+    # LinkedIn API
+    linkedin_client_id: str = ""
+    linkedin_client_secret: str = ""
+    linkedin_org_urn: str = ""
+    linkedin_access_token: str = ""
+    linkedin_api_version: str = "202401"
+    linkedin_conversion_api_version: str = "202401"
+    linkedin_ad_account_urn: str = ""
+
     # Database
     mongodb_uri: str = "mongodb://localhost:27017" # default fallback
     database_name: str = "club_artizen_analytics"
@@ -41,6 +50,16 @@ class Settings(BaseSettings):
     def yt_credentials_available(self) -> bool:
         """True when a YouTube API key and channel ID are both set."""
         return bool(self.youtube_api_key and self.youtube_channel_id)
+
+    @property
+    def linkedin_credentials_available(self) -> bool:
+        """True when LinkedIn API credentials are both set."""
+        return bool(self.linkedin_client_id and self.linkedin_client_secret)
+
+    @property
+    def linkedin_live_api_ready(self) -> bool:
+        """True when token and ad account URN are available for live ad analytics."""
+        return bool(self.linkedin_access_token and self.linkedin_ad_account_urn)
 
     @property
     def cors_origins_list(self) -> list[str]:

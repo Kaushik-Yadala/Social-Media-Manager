@@ -12,6 +12,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/co
 import { Separator } from '@/components/ui/separator';
 import { MetricKPI, ChartCard, AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from '@/components/charts/ChartComponents';
 import { PieChart, Pie, Cell } from 'recharts';
+import { LinkedInConversionMetrics } from '@/components/channel/LinkedInConversionMetrics';
 import { getWidgetsForChannel } from '@/lib/stub-data/widgets';
 import { getPostsByChannel } from '@/lib/stub-data/posts';
 import { channels } from '@/lib/stub-data/channels';
@@ -573,6 +574,21 @@ export function ChannelDashboard({ channel, channelName, channelColor, channelIc
                 <MetricKPI label="Reach" value={stats?.reach || 0} change={8.5} icon={<Eye className="h-5 w-5" />} />
                 <MetricKPI label={channel === 'youtube' ? 'Views' : 'Impressions'} value={stats?.impressions || 0} change={12.4} icon={<BarChart3 className="h-5 w-5" />} />
             </div>
+
+            {/* LinkedIn Conversions Section */}
+            {channel === 'linkedin' && (
+                <Card className="border-blue-100 bg-blue-50/30">
+                    <CardHeader>
+                        <CardTitle className="text-lg flex items-center gap-2">
+                            <TrendingUp className="h-5 w-5 text-blue-600" />
+                            LinkedIn Conversions & ROI
+                        </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <LinkedInConversionMetrics startDate="30daysAgo" endDate="today" />
+                    </CardContent>
+                </Card>
+            )}
 
             {view === 'widgets' ? (
                 <>

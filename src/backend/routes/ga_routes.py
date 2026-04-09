@@ -27,9 +27,8 @@ def _handle(func, *args, **kwargs):
     try:
         return func(*args, **kwargs)
     except RuntimeError as exc:
+        print(f"DEBUG GA ERROR: {exc}")  # Add this line!
         raise HTTPException(status_code=503, detail=str(exc))
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"GA API error: {exc}")
 
 
 # ── endpoints ─────────────────────────────────────────────────────────────────
