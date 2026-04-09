@@ -2,6 +2,7 @@
 ~$*.doc*
 ~$*.xls*
 *.tmp
+*.env
 
 # --- Python ---
 __pycache__/
