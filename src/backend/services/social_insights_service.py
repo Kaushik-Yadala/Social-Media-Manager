@@ -780,6 +780,7 @@ def _postwise_response_entry(
         "account_id": post_document.get("account_id"),
         "account_username": post_document.get("account_username"),
         "account_name": post_document.get("account_name"),
+        "description": post_document.get("description"),
         "post_type": post_document.get("post_type"),
         "publish_time": _as_utc_iso(publish_time) if isinstance(publish_time, datetime) else None,
         "permalink": post_document.get("permalink"),
