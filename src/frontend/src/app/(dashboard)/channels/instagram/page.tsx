@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
     BarChart3,
     Bookmark,
+    CalendarDays,
     ExternalLink,
     Eye,
     Grid3X3,
@@ -20,12 +21,14 @@ import {
     X,
 } from 'lucide-react';
 import { PieChart, Pie, Cell } from 'recharts';
+import { DayPicker, DateRange } from 'react-day-picker';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
@@ -36,7 +39,9 @@ import {
     Bar,
     BarChart,
     CartesianGrid,
-    MetricKPI,
+    Legend,
+    Line,
+    LineChart,
     ResponsiveContainer,
     Tooltip,
     XAxis,
@@ -82,6 +87,16 @@ const METRIC_COLORS: Record<string, string> = {
 };
 
 const PIE_COLORS = ['#7C3AED', '#2563EB', '#059669', '#D97706', '#0EA5E9', '#EC4899', '#14B8A6'];
+const POST_TYPE_GROWTH_METRIC_OPTIONS = [
+    { value: 'total_interactions', label: 'Interactions' },
+    { value: 'views', label: 'Views' },
+    { value: 'reach', label: 'Reach' },
+    { value: 'likes', label: 'Likes' },
+    { value: 'comments', label: 'Comments' },
+    { value: 'shares', label: 'Shares' },
+    { value: 'saved', label: 'Saved' },
+    { value: 'follows', label: 'Follows' },
+] as const;
 
 interface ManualInsightValue {
     value: number | string;
@@ -172,6 +187,25 @@ type PostTimeFilter =
     | 'last_180_days'
     | 'last_365_days';
 
+interface DateRangeBounds {
+    startMs: number;
+    endMs: number;
+    startDate: Date;
+    endDate: Date;
+}
+
+interface PostTypeAggregate {
+    type: string;
+    count: number;
+    totals: Record<string, number>;
+}
+
+interface TopPostTypeMetric {
+    type: string;
+    value: number;
+    count: number;
+}
+
 function stringifyDetail(detail: unknown): string {
     if (typeof detail === 'string') return detail;
     if (Array.isArray(detail)) {
@@ -204,6 +238,32 @@ function formatShortDate(dateText: string): string {
         month: 'short',
         day: 'numeric',
     });
+}
+
+function formatDateWithYear(date: Date): string {
+    return date.toLocaleDateString(undefined, {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+    });
+}
+
+function formatDateRangeLabel(range: DateRange | undefined): string {
+    if (!range?.from) return 'Select date range';
+    if (!range.to) return `${formatDateWithYear(range.from)} - Select end date`;
+    return `${formatDateWithYear(range.from)} - ${formatDateWithYear(range.to)}`;
+}
+
+function startOfDay(date: Date): Date {
+    const copy = new Date(date);
+    copy.setHours(0, 0, 0, 0);
+    return copy;
+}
+
+function endOfDay(date: Date): Date {
+    const copy = new Date(date);
+    copy.setHours(23, 59, 59, 999);
+    return copy;
 }
 
 function formatMetricLabel(metricKey: string): string {
@@ -273,7 +333,7 @@ function parseChannelMetricSeries(payload: ManualInsightsResponse): MetricSeries
                     : `point-${fallbackSort.toString().padStart(4, '0')}`;
             const dateLabel =
                 parsedDate !== null
-                    ? parsedDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+                    ? formatDateWithYear(parsedDate)
                     : `Point ${fallbackSort}`;
 
             points.push({
@@ -415,12 +475,75 @@ function buildWidgetCatalog(series: MetricSeries[], posts: InstagramPostRecord[]
     return widgets;
 }
 
-function getLatestChange(points: MetricPoint[]): number | undefined {
-    if (points.length < 2) return undefined;
-    const latest = points[points.length - 1].value;
-    const previous = points[points.length - 2].value;
-    if (previous === 0) return undefined;
-    return Number((((latest - previous) / previous) * 100).toFixed(1));
+function getMetricChange(
+    allPoints: MetricPoint[],
+    windowPoints: MetricPoint[],
+    dateRange: DateRangeBounds | null,
+): number | undefined {
+    if (dateRange === null) {
+        if (allPoints.length < 2) return undefined;
+        const latest = allPoints[allPoints.length - 1].value;
+        const previous = allPoints[allPoints.length - 2].value;
+        if (previous === 0) return undefined;
+        return Number((((latest - previous) / previous) * 100).toFixed(1));
+    }
+
+    const currentRangeTotal = windowPoints.reduce((sum, point) => sum + point.value, 0);
+    const currentRangeDurationMs = dateRange.endMs - dateRange.startMs;
+    const previousRangeEndMs = dateRange.startMs - 1;
+    const previousRangeStartMs = previousRangeEndMs - currentRangeDurationMs;
+
+    const previousRangeTotal = allPoints.reduce((sum, point) => {
+        if (point.sortValue < previousRangeStartMs || point.sortValue > previousRangeEndMs) return sum;
+        return sum + point.value;
+    }, 0);
+
+    if (previousRangeTotal === 0) return undefined;
+    return Number((((currentRangeTotal - previousRangeTotal) / previousRangeTotal) * 100).toFixed(1));
+}
+
+function InstagramMetricCard({
+    label,
+    value,
+    change,
+    changeLabel,
+    icon,
+    showGlobalValue,
+    globalValue,
+}: {
+    label: string;
+    value: number;
+    change?: number;
+    changeLabel: string;
+    icon: React.ReactNode;
+    showGlobalValue: boolean;
+    globalValue: number;
+}) {
+    const isPositive = (change ?? 0) >= 0;
+
+    return (
+        <Card className="card-hover border-stone-200">
+            <CardContent className="pt-5">
+                <div className="flex items-center justify-between">
+                    <div>
+                        <p className="text-xs font-medium uppercase tracking-wide text-stone-500">{label}</p>
+                        <p className="mt-1 text-2xl font-semibold text-stone-900">{value.toLocaleString()}</p>
+                        {showGlobalValue && (
+                            <p className="mt-1 text-[11px] text-stone-500">Global: {globalValue.toLocaleString()}</p>
+                        )}
+                        {change !== undefined && (
+                            <p className={`mt-1 text-xs font-medium ${isPositive ? 'text-emerald-600' : 'text-red-500'}`}>
+                                {isPositive ? '↑' : '↓'} {Math.abs(change)}% {changeLabel}
+                            </p>
+                        )}
+                    </div>
+                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-50 text-amber-600">
+                        {icon}
+                    </div>
+                </div>
+            </CardContent>
+        </Card>
+    );
 }
 
 function normalizePostTypeLabel(postType: string): string {
@@ -442,6 +565,23 @@ function derivePostTitle(description: string | null, postId: string): string {
     const firstSentence = normalizedDescription.split(/(?<=[.!?])\s+/)[0] || normalizedDescription;
     const titleCandidate = firstSentence.length > 90 ? `${firstSentence.slice(0, 87)}...` : firstSentence;
     return titleCandidate.trim();
+}
+
+function getTopPostTypeByMetric(
+    aggregates: PostTypeAggregate[],
+    metricKey: string,
+): TopPostTypeMetric | null {
+    if (aggregates.length === 0) return null;
+
+    let winner: TopPostTypeMetric | null = null;
+    for (const aggregate of aggregates) {
+        const value = aggregate.totals[metricKey] || 0;
+        if (!winner || value > winner.value) {
+            winner = { type: aggregate.type, value, count: aggregate.count };
+        }
+    }
+
+    return winner;
 }
 
 function normalizeFuzzyText(value: string): string {
@@ -547,13 +687,17 @@ export default function InstagramPage() {
     const [view, setView] = useState<'dashboard' | 'posts'>('dashboard');
     const [widgetSheetOpen, setWidgetSheetOpen] = useState(false);
     const [activeWidgetIds, setActiveWidgetIds] = useState<string[]>([]);
+    const [selectedCalendarRange, setSelectedCalendarRange] = useState<DateRange | undefined>();
 
+    const [postsMode, setPostsMode] = useState<'individual' | 'analytics'>('individual');
     const [searchQ, setSearchQ] = useState('');
     const [typeFilter, setTypeFilter] = useState('all');
     const [timeFilter, setTimeFilter] = useState<PostTimeFilter>('all');
     const [sortBy, setSortBy] = useState<'publish_time' | 'total_interactions' | 'views' | 'reach'>(
         'publish_time',
     );
+    const [postGrowthMetricKey, setPostGrowthMetricKey] =
+        useState<(typeof POST_TYPE_GROWTH_METRIC_OPTIONS)[number]['value']>('total_interactions');
     const [postView, setPostView] = useState<'grid' | 'list'>('grid');
     const [selectedPost, setSelectedPost] = useState<InstagramPostRecord | null>(null);
 
@@ -592,11 +736,59 @@ export default function InstagramPage() {
         void loadDashboardData();
     }, [loadDashboardData]);
 
-    const seriesByKey = useMemo(() => {
+    const allSeriesByKey = useMemo(() => {
         const map = new Map<string, MetricSeries>();
         metricSeries.forEach((series) => map.set(series.key, series));
         return map;
     }, [metricSeries]);
+
+    const isDateRangePending = Boolean(selectedCalendarRange?.from && !selectedCalendarRange?.to);
+    const selectedDateRange = useMemo<DateRangeBounds | null>(() => {
+        if (!selectedCalendarRange?.from || !selectedCalendarRange.to) return null;
+        return {
+            startMs: startOfDay(selectedCalendarRange.from).getTime(),
+            endMs: endOfDay(selectedCalendarRange.to).getTime(),
+            startDate: selectedCalendarRange.from,
+            endDate: selectedCalendarRange.to,
+        };
+    }, [selectedCalendarRange]);
+    const isDateRangeActive = selectedDateRange !== null;
+
+    const seriesForDisplay = useMemo(() => {
+        if (!isDateRangeActive || !selectedDateRange) return metricSeries;
+
+        return metricSeries.map((series) => {
+            const points = series.points.filter(
+                (point) => point.sortValue >= selectedDateRange.startMs && point.sortValue <= selectedDateRange.endMs,
+            );
+            const total = points.reduce((sum, point) => sum + point.value, 0);
+            const latest = points.length > 0 ? points[points.length - 1].value : 0;
+            return {
+                ...series,
+                points,
+                total,
+                latest,
+            };
+        });
+    }, [metricSeries, isDateRangeActive, selectedDateRange]);
+
+    const seriesByKey = useMemo(() => {
+        const map = new Map<string, MetricSeries>();
+        seriesForDisplay.forEach((series) => map.set(series.key, series));
+        return map;
+    }, [seriesForDisplay]);
+
+    const postsForDisplay = useMemo(() => {
+        if (!isDateRangeActive || !selectedDateRange) return posts;
+
+        return posts.filter((post) => {
+            if (!post.publishTime) return false;
+            const publishDate = parseDate(post.publishTime);
+            if (!publishDate) return false;
+            const timestamp = publishDate.getTime();
+            return timestamp >= selectedDateRange.startMs && timestamp <= selectedDateRange.endMs;
+        });
+    }, [posts, isDateRangeActive, selectedDateRange]);
 
     const postTotals = useMemo(() => {
         const totals: Record<string, number> = {};
@@ -609,7 +801,21 @@ export default function InstagramPage() {
         return totals;
     }, [posts]);
 
-    const widgetCatalog = useMemo(() => buildWidgetCatalog(metricSeries, posts), [metricSeries, posts]);
+    const postTotalsForDisplay = useMemo(() => {
+        const totals: Record<string, number> = {};
+        for (const post of postsForDisplay) {
+            Object.entries(post.metrics).forEach(([metricKey, metricValue]) => {
+                totals[metricKey] = (totals[metricKey] || 0) + metricValue;
+            });
+        }
+        totals.total_interactions = deriveTotalInteractions(totals);
+        return totals;
+    }, [postsForDisplay]);
+
+    const widgetCatalog = useMemo(
+        () => buildWidgetCatalog(seriesForDisplay, postsForDisplay),
+        [seriesForDisplay, postsForDisplay],
+    );
 
     useEffect(() => {
         const validIds = new Set(widgetCatalog.map((widget) => widget.id));
@@ -641,32 +847,145 @@ export default function InstagramPage() {
 
     const postTypeDistribution = useMemo(() => {
         const counts = new Map<string, number>();
-        posts.forEach((post) => {
+        postsForDisplay.forEach((post) => {
             const key = normalizePostTypeLabel(post.postType);
             counts.set(key, (counts.get(key) || 0) + 1);
         });
         return Array.from(counts.entries()).map(([type, count]) => ({ type, count }));
-    }, [posts]);
+    }, [postsForDisplay]);
+
+    const postTypeAggregates = useMemo<PostTypeAggregate[]>(() => {
+        const aggregateMap = new Map<string, PostTypeAggregate>();
+
+        for (const post of postsForDisplay) {
+            const type = normalizePostTypeLabel(post.postType);
+            const existing =
+                aggregateMap.get(type) ||
+                ({
+                    type,
+                    count: 0,
+                    totals: {},
+                } satisfies PostTypeAggregate);
+
+            existing.count += 1;
+            Object.entries(post.metrics).forEach(([metricKey, metricValue]) => {
+                existing.totals[metricKey] = (existing.totals[metricKey] || 0) + metricValue;
+            });
+
+            aggregateMap.set(type, existing);
+        }
+
+        return Array.from(aggregateMap.values()).sort((a, b) => {
+            const interactionsA = a.totals.total_interactions || 0;
+            const interactionsB = b.totals.total_interactions || 0;
+            return interactionsB - interactionsA;
+        });
+    }, [postsForDisplay]);
+
+    const bestPostTypeByInteractions = useMemo(
+        () => getTopPostTypeByMetric(postTypeAggregates, 'total_interactions'),
+        [postTypeAggregates],
+    );
+    const bestPostTypeByViews = useMemo(
+        () => getTopPostTypeByMetric(postTypeAggregates, 'views'),
+        [postTypeAggregates],
+    );
+    const bestPostTypeByReach = useMemo(
+        () => getTopPostTypeByMetric(postTypeAggregates, 'reach'),
+        [postTypeAggregates],
+    );
+
+    const postTypeMetricTotals = useMemo(
+        () =>
+            postTypeAggregates
+                .map((aggregate) => ({
+                    type: aggregate.type,
+                    total: aggregate.totals[postGrowthMetricKey] || 0,
+                    posts: aggregate.count,
+                }))
+                .sort((a, b) => b.total - a.total),
+        [postTypeAggregates, postGrowthMetricKey],
+    );
+
+    const postTypeGrowthSeries = useMemo(() => {
+        const rankedTypes = postTypeMetricTotals
+            .filter((entry) => entry.total > 0)
+            .slice(0, 5)
+            .map((entry) => entry.type);
+        if (rankedTypes.length === 0) {
+            return { data: [] as Array<Record<string, number | string>>, types: [] as string[] };
+        }
+
+        const topTypeSet = new Set(rankedTypes);
+        const dailyRows = new Map<
+            string,
+            {
+                sortValue: number;
+                dateLabel: string;
+                totals: Record<string, number>;
+            }
+        >();
+
+        for (const post of postsForDisplay) {
+            if (!post.publishTime) continue;
+            const publishDate = parseDate(post.publishTime);
+            if (!publishDate) continue;
+
+            const type = normalizePostTypeLabel(post.postType);
+            if (!topTypeSet.has(type)) continue;
+
+            const metricValue = post.metrics[postGrowthMetricKey] || 0;
+            const dateKey = publishDate.toISOString().slice(0, 10);
+            const row = dailyRows.get(dateKey) || {
+                sortValue: publishDate.getTime(),
+                dateLabel: formatDateWithYear(publishDate),
+                totals: {},
+            };
+            row.totals[type] = (row.totals[type] || 0) + metricValue;
+            dailyRows.set(dateKey, row);
+        }
+
+        const sortedRows = Array.from(dailyRows.values()).sort((a, b) => a.sortValue - b.sortValue);
+        const runningTotals: Record<string, number> = {};
+        rankedTypes.forEach((type) => {
+            runningTotals[type] = 0;
+        });
+
+        const data = sortedRows.map((row) => {
+            const chartEntry: Record<string, string | number> = {
+                date: row.dateLabel,
+            };
+
+            rankedTypes.forEach((type) => {
+                runningTotals[type] += row.totals[type] || 0;
+                chartEntry[type] = Math.round(runningTotals[type]);
+            });
+
+            return chartEntry;
+        });
+
+        return { data, types: rankedTypes };
+    }, [postsForDisplay, postGrowthMetricKey, postTypeMetricTotals]);
 
     const topPostsByInteractions = useMemo(
         () =>
-            [...posts]
+            [...postsForDisplay]
                 .sort(
                     (a, b) =>
                         (b.metrics.total_interactions || 0) - (a.metrics.total_interactions || 0),
                 )
                 .slice(0, 8),
-        [posts],
+        [postsForDisplay],
     );
 
     const postEngagementBreakdown = useMemo(
         () => [
-            { metric: 'Likes', value: postTotals.likes || 0 },
-            { metric: 'Comments', value: postTotals.comments || 0 },
-            { metric: 'Shares', value: postTotals.shares || 0 },
-            { metric: 'Saved', value: postTotals.saved || 0 },
+            { metric: 'Likes', value: postTotalsForDisplay.likes || 0 },
+            { metric: 'Comments', value: postTotalsForDisplay.comments || 0 },
+            { metric: 'Shares', value: postTotalsForDisplay.shares || 0 },
+            { metric: 'Saved', value: postTotalsForDisplay.saved || 0 },
         ],
-        [postTotals],
+        [postTotalsForDisplay],
     );
 
     const postViewsVsReach = useMemo(
@@ -681,13 +1000,13 @@ export default function InstagramPage() {
 
     const metricOverviewData = useMemo(
         () =>
-            metricSeries
+            seriesForDisplay
                 .filter((series) => series.points.length > 0)
                 .map((series) => ({
                     metric: series.label,
                     total: Math.round(series.total),
                 })),
-        [metricSeries],
+        [seriesForDisplay],
     );
 
     const typeOptions = useMemo(
@@ -705,7 +1024,7 @@ export default function InstagramPage() {
     ];
 
     const filteredPosts = useMemo(() => {
-        let result = [...posts];
+        let result = [...postsForDisplay];
         if (typeFilter !== 'all') {
             result = result.filter((post) => normalizePostTypeLabel(post.postType) === typeFilter);
         }
@@ -720,21 +1039,66 @@ export default function InstagramPage() {
         });
 
         return result;
-    }, [posts, typeFilter, timeFilter, searchQ, sortBy]);
+    }, [postsForDisplay, typeFilter, timeFilter, searchQ, sortBy]);
+
+    const globalViewsSeries = allSeriesByKey.get('views');
+    const globalReachSeries = allSeriesByKey.get('reach');
+    const globalInteractionsSeries = allSeriesByKey.get('content_interactions');
+    const globalFollowsSeries = allSeriesByKey.get('instagram_follows');
 
     const viewsSeries = seriesByKey.get('views');
     const reachSeries = seriesByKey.get('reach');
     const interactionsSeries = seriesByKey.get('content_interactions');
     const followsSeries = seriesByKey.get('instagram_follows');
 
-    const totalViews = viewsSeries ? Math.round(viewsSeries.total) : Math.round(postTotals.views || 0);
-    const totalReach = reachSeries ? Math.round(reachSeries.total) : Math.round(postTotals.reach || 0);
-    const totalInteractions = interactionsSeries
-        ? Math.round(interactionsSeries.total)
+    const globalTotalViews = globalViewsSeries ? Math.round(globalViewsSeries.total) : Math.round(postTotals.views || 0);
+    const globalTotalReach = globalReachSeries ? Math.round(globalReachSeries.total) : Math.round(postTotals.reach || 0);
+    const globalTotalInteractions = globalInteractionsSeries
+        ? Math.round(globalInteractionsSeries.total)
         : Math.round(postTotals.total_interactions || 0);
-    const totalFollows = followsSeries
-        ? Math.round(followsSeries.total)
+    const globalTotalFollows = globalFollowsSeries
+        ? Math.round(globalFollowsSeries.total)
         : Math.round(postTotals.follows || 0);
+
+    const selectedRangeTotalViews = viewsSeries
+        ? Math.round(viewsSeries.total)
+        : Math.round(postTotalsForDisplay.views || 0);
+    const selectedRangeTotalReach = reachSeries
+        ? Math.round(reachSeries.total)
+        : Math.round(postTotalsForDisplay.reach || 0);
+    const selectedRangeTotalInteractions = interactionsSeries
+        ? Math.round(interactionsSeries.total)
+        : Math.round(postTotalsForDisplay.total_interactions || 0);
+    const selectedRangeTotalFollows = followsSeries
+        ? Math.round(followsSeries.total)
+        : Math.round(postTotalsForDisplay.follows || 0);
+
+    const totalViews = isDateRangeActive ? selectedRangeTotalViews : globalTotalViews;
+    const totalReach = isDateRangeActive ? selectedRangeTotalReach : globalTotalReach;
+    const totalInteractions = isDateRangeActive ? selectedRangeTotalInteractions : globalTotalInteractions;
+    const totalFollows = isDateRangeActive ? selectedRangeTotalFollows : globalTotalFollows;
+
+    const comparisonLabel = isDateRangeActive ? 'vs previous equal range' : 'vs previous day';
+
+    const viewsChange = globalViewsSeries
+        ? getMetricChange(globalViewsSeries.points, viewsSeries ? viewsSeries.points : [], selectedDateRange)
+        : undefined;
+    const reachChange = globalReachSeries
+        ? getMetricChange(globalReachSeries.points, reachSeries ? reachSeries.points : [], selectedDateRange)
+        : undefined;
+    const interactionsChange = globalInteractionsSeries
+        ? getMetricChange(
+              globalInteractionsSeries.points,
+              interactionsSeries ? interactionsSeries.points : [],
+              selectedDateRange,
+          )
+        : undefined;
+    const followsChange = globalFollowsSeries
+        ? getMetricChange(globalFollowsSeries.points, followsSeries ? followsSeries.points : [], selectedDateRange)
+        : undefined;
+    const selectedPostGrowthMetricLabel =
+        POST_TYPE_GROWTH_METRIC_OPTIONS.find((option) => option.value === postGrowthMetricKey)?.label ||
+        formatMetricLabel(postGrowthMetricKey);
 
     const renderWidget = (widget: DashboardWidget) => {
         if (widget.kind === 'channel-overview') {
@@ -951,6 +1315,88 @@ export default function InstagramPage() {
                 </div>
             </div>
 
+            <Card className="border-stone-200">
+                <CardContent className="pt-5">
+                    <div className="flex flex-wrap items-center gap-2">
+                        <Popover>
+                            <PopoverTrigger asChild>
+                                <Button
+                                    variant="outline"
+                                    className="h-9 min-w-[280px] justify-start text-left font-normal text-stone-700"
+                                >
+                                    <CalendarDays className="mr-2 h-4 w-4 text-violet-600" />
+                                    {formatDateRangeLabel(selectedCalendarRange)}
+                                </Button>
+                            </PopoverTrigger>
+                            <PopoverContent align="start" className="w-auto p-0">
+                                <DayPicker
+                                    mode="range"
+                                    selected={selectedCalendarRange}
+                                    onSelect={setSelectedCalendarRange}
+                                    numberOfMonths={2}
+                                    className="p-3"
+                                    classNames={{
+                                        months: 'flex flex-col gap-4 sm:flex-row sm:gap-6',
+                                        month: 'space-y-4',
+                                        month_caption:
+                                            'flex items-center justify-center px-1 pt-1 text-sm font-medium text-stone-700',
+                                        nav: 'flex items-center gap-1',
+                                        button_previous:
+                                            'rounded-md border border-stone-200 p-1 text-stone-600 hover:bg-stone-100',
+                                        button_next:
+                                            'rounded-md border border-stone-200 p-1 text-stone-600 hover:bg-stone-100',
+                                        month_grid: 'w-full border-collapse',
+                                        weekdays: 'flex',
+                                        weekday:
+                                            'w-9 text-center text-[11px] font-medium uppercase text-stone-400',
+                                        week: 'mt-1 flex w-full',
+                                        day: 'h-9 w-9 p-0 text-center',
+                                        day_button:
+                                            'h-9 w-9 rounded-md text-sm text-stone-700 transition-colors hover:bg-violet-50',
+                                        selected:
+                                            'bg-violet-600 text-white hover:bg-violet-600 hover:text-white focus:bg-violet-600 focus:text-white',
+                                        range_start:
+                                            'bg-violet-600 text-white hover:bg-violet-600 hover:text-white',
+                                        range_end:
+                                            'bg-violet-600 text-white hover:bg-violet-600 hover:text-white',
+                                        range_middle: 'bg-violet-100 text-violet-900',
+                                        outside: 'text-stone-300',
+                                        today: 'font-semibold text-violet-700',
+                                        disabled: 'text-stone-300',
+                                    }}
+                                />
+                            </PopoverContent>
+                        </Popover>
+                        <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setSelectedCalendarRange(undefined)}
+                            disabled={!selectedCalendarRange?.from && !selectedCalendarRange?.to}
+                        >
+                            Clear
+                        </Button>
+                        {isDateRangeActive && selectedDateRange && (
+                            <Badge variant="outline" className="border-violet-200 bg-violet-50 text-violet-700">
+                                {formatDateWithYear(selectedDateRange.startDate)} -{' '}
+                                {formatDateWithYear(selectedDateRange.endDate)}
+                            </Badge>
+                        )}
+                    </div>
+                    {isDateRangePending ? (
+                        <p className="mt-2 text-xs text-stone-500">
+                            Select the check-out date to apply range filtering.
+                        </p>
+                    ) : (
+                        <p className="mt-2 text-xs text-stone-500">
+                            {isDateRangeActive
+                                ? 'Dashboard metrics and widgets are filtered to the selected range.'
+                                : 'Showing all dates. Select a start and end date to filter results.'}
+                        </p>
+                    )}
+                </CardContent>
+            </Card>
+
             {errorMessage && (
                 <Card className="border-red-200 bg-red-50">
                     <CardContent className="flex flex-wrap items-center justify-between gap-3 pt-5">
@@ -963,28 +1409,40 @@ export default function InstagramPage() {
             )}
 
             <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-                <MetricKPI
+                <InstagramMetricCard
                     label="Views"
                     value={totalViews}
-                    change={viewsSeries ? getLatestChange(viewsSeries.points) : undefined}
+                    change={viewsChange}
+                    changeLabel={comparisonLabel}
+                    showGlobalValue={isDateRangeActive}
+                    globalValue={globalTotalViews}
                     icon={<Eye className="h-5 w-5" />}
                 />
-                <MetricKPI
+                <InstagramMetricCard
                     label="Reach"
                     value={totalReach}
-                    change={reachSeries ? getLatestChange(reachSeries.points) : undefined}
+                    change={reachChange}
+                    changeLabel={comparisonLabel}
+                    showGlobalValue={isDateRangeActive}
+                    globalValue={globalTotalReach}
                     icon={<TrendingUp className="h-5 w-5" />}
                 />
-                <MetricKPI
+                <InstagramMetricCard
                     label="Content Interactions"
                     value={totalInteractions}
-                    change={interactionsSeries ? getLatestChange(interactionsSeries.points) : undefined}
+                    change={interactionsChange}
+                    changeLabel={comparisonLabel}
+                    showGlobalValue={isDateRangeActive}
+                    globalValue={globalTotalInteractions}
                     icon={<MessageSquare className="h-5 w-5" />}
                 />
-                <MetricKPI
+                <InstagramMetricCard
                     label="Follows"
                     value={totalFollows}
-                    change={followsSeries ? getLatestChange(followsSeries.points) : undefined}
+                    change={followsChange}
+                    changeLabel={comparisonLabel}
+                    showGlobalValue={isDateRangeActive}
+                    globalValue={globalTotalFollows}
                     icon={<Users className="h-5 w-5" />}
                 />
             </div>
@@ -992,8 +1450,10 @@ export default function InstagramPage() {
             <Card className="border-stone-200">
                 <CardContent className="pt-5">
                     <div className="flex flex-wrap items-center gap-2 text-xs text-stone-600">
-                        <Badge variant="outline">Channel metrics: {metricSeries.length}</Badge>
-                        <Badge variant="outline">Post rows: {posts.length}</Badge>
+                        <Badge variant="outline">
+                            Channel metrics: {seriesForDisplay.filter((series) => series.points.length > 0).length}
+                        </Badge>
+                        <Badge variant="outline">Post rows: {postsForDisplay.length}</Badge>
                         {lastSyncedAt && <span>Last synced: {lastSyncedAt}</span>}
                     </div>
                 </CardContent>
@@ -1075,188 +1535,439 @@ export default function InstagramPage() {
                 </>
             ) : (
                 <>
-                    <div className="flex flex-wrap items-center gap-3">
-                        <div className="relative min-w-[220px] flex-1">
-                            <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-stone-400" />
-                            <Input
-                                value={searchQ}
-                                onChange={(event) => setSearchQ(event.target.value)}
-                                placeholder="Fuzzy search by post title, description, ID, type, or account..."
-                                className="pl-9"
-                            />
-                        </div>
-                        <Select value={typeFilter} onValueChange={setTypeFilter}>
-                            <SelectTrigger className="w-[190px]">
-                                <SelectValue placeholder="Filter post type" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                {typeOptions.map((typeOption) => (
-                                    <SelectItem key={typeOption} value={typeOption}>
-                                        {typeOption === 'all' ? 'All post types' : typeOption}
-                                    </SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
-                        <Select
-                            value={timeFilter}
-                            onValueChange={(value) => setTimeFilter(value as PostTimeFilter)}
-                        >
-                            <SelectTrigger className="w-[180px]">
-                                <SelectValue placeholder="Filter time period" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                {postTimeFilterOptions.map((option) => (
-                                    <SelectItem key={option.value} value={option.value}>
-                                        {option.label}
-                                    </SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
-                        <Select
-                            value={sortBy}
-                            onValueChange={(value) =>
-                                setSortBy(value as 'publish_time' | 'total_interactions' | 'views' | 'reach')
-                            }
-                        >
-                            <SelectTrigger className="w-[190px]">
-                                <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="publish_time">Sort by publish time</SelectItem>
-                                <SelectItem value="total_interactions">Sort by interactions</SelectItem>
-                                <SelectItem value="views">Sort by views</SelectItem>
-                                <SelectItem value="reach">Sort by reach</SelectItem>
-                            </SelectContent>
-                        </Select>
-                        <div className="flex items-center gap-1">
-                            <Button
-                                variant={postView === 'grid' ? 'default' : 'outline'}
-                                size="icon"
-                                className="h-8 w-8"
-                                onClick={() => setPostView('grid')}
-                            >
-                                <Grid3X3 className="h-3.5 w-3.5" />
-                            </Button>
-                            <Button
-                                variant={postView === 'list' ? 'default' : 'outline'}
-                                size="icon"
-                                className="h-8 w-8"
-                                onClick={() => setPostView('list')}
-                            >
-                                <List className="h-3.5 w-3.5" />
-                            </Button>
-                        </div>
-                    </div>
+                    <Tabs value={postsMode} onValueChange={(next) => setPostsMode(next as 'individual' | 'analytics')}>
+                        <TabsList className="bg-stone-100">
+                            <TabsTrigger value="individual" className="text-xs">
+                                <Grid3X3 className="mr-1 h-3 w-3" />
+                                Individual Post Analysis
+                            </TabsTrigger>
+                            <TabsTrigger value="analytics" className="text-xs">
+                                <BarChart3 className="mr-1 h-3 w-3" />
+                                Post Widgets & Graphs
+                            </TabsTrigger>
+                        </TabsList>
+                    </Tabs>
 
-                    {isLoading ? (
-                        <Card>
-                            <CardContent className="py-10 text-center text-sm text-stone-500">
-                                Loading Instagram post insights...
-                            </CardContent>
-                        </Card>
-                    ) : filteredPosts.length === 0 ? (
-                        <Card>
-                            <CardContent className="py-10 text-center text-sm text-stone-500">
-                                No posts found for the current filters.
-                            </CardContent>
-                        </Card>
-                    ) : postView === 'grid' ? (
-                        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-                            {filteredPosts.map((post) => (
-                                <Card
-                                    key={post.postId}
-                                    className="cursor-pointer border-stone-200 transition-shadow hover:shadow-md"
-                                    onClick={() => setSelectedPost(post)}
-                                >
-                                    <CardContent className="space-y-3 pt-5">
-                                        <div className="flex items-start justify-between gap-2">
-                                            <div className="min-w-0">
-                                                <p className="truncate text-sm font-semibold text-stone-800">
-                                                    {post.title}
-                                                </p>
-                                                <p className="text-[11px] text-stone-500">
-                                                    {post.publishTime ? formatShortDate(post.publishTime) : 'Unknown date'}
-                                                </p>
-                                            </div>
-                                            <Badge variant="outline" className="text-[10px]">
-                                                {normalizePostTypeLabel(post.postType)}
-                                            </Badge>
-                                        </div>
-                                        <p className="line-clamp-3 text-xs text-stone-600">
-                                            {post.description || `Post ID: ${post.postId}`}
-                                        </p>
+                    {postsMode === 'analytics' ? (
+                        isLoading ? (
+                            <Card>
+                                <CardContent className="py-10 text-center text-sm text-stone-500">
+                                    Loading Instagram post analytics...
+                                </CardContent>
+                            </Card>
+                        ) : postsForDisplay.length === 0 ? (
+                            <Card>
+                                <CardContent className="py-10 text-center text-sm text-stone-500">
+                                    No posts available for the selected date range.
+                                </CardContent>
+                            </Card>
+                        ) : (
+                            <>
+                                <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                                    <Card className="border-stone-200">
+                                        <CardHeader className="pb-2">
+                                            <CardTitle className="text-sm text-stone-800">Best by Interactions</CardTitle>
+                                        </CardHeader>
+                                        <CardContent>
+                                            <p className="text-lg font-semibold text-violet-700">
+                                                {bestPostTypeByInteractions?.type || 'No data'}
+                                            </p>
+                                            <p className="text-xs text-stone-500">
+                                                {bestPostTypeByInteractions
+                                                    ? `${Math.round(bestPostTypeByInteractions.value).toLocaleString()} interactions across ${bestPostTypeByInteractions.count} posts`
+                                                    : 'No interaction metrics found.'}
+                                            </p>
+                                        </CardContent>
+                                    </Card>
+                                    <Card className="border-stone-200">
+                                        <CardHeader className="pb-2">
+                                            <CardTitle className="text-sm text-stone-800">Best by Views</CardTitle>
+                                        </CardHeader>
+                                        <CardContent>
+                                            <p className="text-lg font-semibold text-violet-700">
+                                                {bestPostTypeByViews?.type || 'No data'}
+                                            </p>
+                                            <p className="text-xs text-stone-500">
+                                                {bestPostTypeByViews
+                                                    ? `${Math.round(bestPostTypeByViews.value).toLocaleString()} views across ${bestPostTypeByViews.count} posts`
+                                                    : 'No view metrics found.'}
+                                            </p>
+                                        </CardContent>
+                                    </Card>
+                                    <Card className="border-stone-200">
+                                        <CardHeader className="pb-2">
+                                            <CardTitle className="text-sm text-stone-800">Best by Reach</CardTitle>
+                                        </CardHeader>
+                                        <CardContent>
+                                            <p className="text-lg font-semibold text-violet-700">
+                                                {bestPostTypeByReach?.type || 'No data'}
+                                            </p>
+                                            <p className="text-xs text-stone-500">
+                                                {bestPostTypeByReach
+                                                    ? `${Math.round(bestPostTypeByReach.value).toLocaleString()} reach across ${bestPostTypeByReach.count} posts`
+                                                    : 'No reach metrics found.'}
+                                            </p>
+                                        </CardContent>
+                                    </Card>
+                                </div>
 
-                                        <div className="grid grid-cols-2 gap-2 text-xs">
-                                            <div className="rounded-md bg-stone-50 px-2 py-1">
-                                                <p className="text-[10px] text-stone-500">Views</p>
-                                                <p className="font-semibold text-stone-800">
-                                                    {(post.metrics.views || 0).toLocaleString()}
-                                                </p>
-                                            </div>
-                                            <div className="rounded-md bg-stone-50 px-2 py-1">
-                                                <p className="text-[10px] text-stone-500">Reach</p>
-                                                <p className="font-semibold text-stone-800">
-                                                    {(post.metrics.reach || 0).toLocaleString()}
-                                                </p>
-                                            </div>
-                                            <div className="rounded-md bg-stone-50 px-2 py-1">
-                                                <p className="text-[10px] text-stone-500">Interactions</p>
-                                                <p className="font-semibold text-stone-800">
-                                                    {(post.metrics.total_interactions || 0).toLocaleString()}
-                                                </p>
-                                            </div>
-                                            <div className="rounded-md bg-stone-50 px-2 py-1">
-                                                <p className="text-[10px] text-stone-500">Follows</p>
-                                                <p className="font-semibold text-stone-800">
-                                                    {(post.metrics.follows || 0).toLocaleString()}
-                                                </p>
-                                            </div>
-                                        </div>
+                                <div className="flex flex-wrap items-center gap-2">
+                                    <p className="text-xs font-medium text-stone-600">Post-type comparison metric</p>
+                                    <Select
+                                        value={postGrowthMetricKey}
+                                        onValueChange={(value) =>
+                                            setPostGrowthMetricKey(
+                                                value as (typeof POST_TYPE_GROWTH_METRIC_OPTIONS)[number]['value'],
+                                            )
+                                        }
+                                    >
+                                        <SelectTrigger className="w-[220px]">
+                                            <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {POST_TYPE_GROWTH_METRIC_OPTIONS.map((option) => (
+                                                <SelectItem key={option.value} value={option.value}>
+                                                    {option.label}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
 
-                                        {post.permalink && (
-                                            <a
-                                                href={post.permalink}
-                                                target="_blank"
-                                                rel="noreferrer"
-                                                className="inline-flex items-center gap-1 text-xs text-violet-700 hover:text-violet-800"
-                                                onClick={(event) => event.stopPropagation()}
-                                            >
-                                                Open permalink
-                                                <ExternalLink className="h-3 w-3" />
-                                            </a>
-                                        )}
-                                    </CardContent>
-                                </Card>
-                            ))}
-                        </div>
+                                <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+                                    <Card className="border-stone-200">
+                                        <CardHeader className="pb-2">
+                                            <CardTitle className="text-sm text-stone-800">
+                                                Post Type {selectedPostGrowthMetricLabel} Growth Over Time
+                                            </CardTitle>
+                                            <CardDescription className="text-xs">
+                                                Cumulative {selectedPostGrowthMetricLabel.toLowerCase()} trend by top post types.
+                                            </CardDescription>
+                                        </CardHeader>
+                                        <CardContent>
+                                            {postTypeGrowthSeries.data.length === 0 ? (
+                                                <p className="text-xs text-stone-400">
+                                                    Not enough publish-time data for post-type growth comparison.
+                                                </p>
+                                            ) : (
+                                                <div className="h-[260px]">
+                                                    <ResponsiveContainer width="100%" height="100%">
+                                                        <LineChart data={postTypeGrowthSeries.data}>
+                                                            <CartesianGrid strokeDasharray="3 3" stroke="#E7E5E4" />
+                                                            <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#78716C' }} />
+                                                            <YAxis tick={{ fontSize: 10, fill: '#78716C' }} />
+                                                            <Tooltip />
+                                                            <Legend wrapperStyle={{ fontSize: 11 }} />
+                                                            {postTypeGrowthSeries.types.map((type, index) => (
+                                                                <Line
+                                                                    key={type}
+                                                                    type="monotone"
+                                                                    dataKey={type}
+                                                                    stroke={PIE_COLORS[index % PIE_COLORS.length]}
+                                                                    strokeWidth={2}
+                                                                    dot={false}
+                                                                />
+                                                            ))}
+                                                        </LineChart>
+                                                    </ResponsiveContainer>
+                                                </div>
+                                            )}
+                                        </CardContent>
+                                    </Card>
+
+                                    <Card className="border-stone-200">
+                                        <CardHeader className="pb-2">
+                                            <CardTitle className="text-sm text-stone-800">
+                                                Post Type {selectedPostGrowthMetricLabel} Totals
+                                            </CardTitle>
+                                            <CardDescription className="text-xs">
+                                                Ranking of post types for the selected metric in the active date window.
+                                            </CardDescription>
+                                        </CardHeader>
+                                        <CardContent>
+                                            {postTypeMetricTotals.length === 0 ? (
+                                                <p className="text-xs text-stone-400">No post-type totals available.</p>
+                                            ) : (
+                                                <div className="h-[260px]">
+                                                    <ResponsiveContainer width="100%" height="100%">
+                                                        <BarChart data={postTypeMetricTotals.slice(0, 8)}>
+                                                            <CartesianGrid strokeDasharray="3 3" stroke="#E7E5E4" />
+                                                            <XAxis dataKey="type" tick={{ fontSize: 10, fill: '#78716C' }} />
+                                                            <YAxis tick={{ fontSize: 10, fill: '#78716C' }} />
+                                                            <Tooltip />
+                                                            <Bar dataKey="total" fill="#7C3AED" radius={[6, 6, 0, 0]} />
+                                                        </BarChart>
+                                                    </ResponsiveContainer>
+                                                </div>
+                                            )}
+                                        </CardContent>
+                                    </Card>
+
+                                    <Card className="border-stone-200">
+                                        <CardHeader className="pb-2">
+                                            <CardTitle className="text-sm text-stone-800">Post Type Distribution</CardTitle>
+                                            <CardDescription className="text-xs">
+                                                Imported post count split by post type.
+                                            </CardDescription>
+                                        </CardHeader>
+                                        <CardContent>
+                                            {postTypeDistribution.length === 0 ? (
+                                                <p className="text-xs text-stone-400">No post type distribution data available.</p>
+                                            ) : (
+                                                <div className="h-[240px]">
+                                                    <ResponsiveContainer width="100%" height="100%">
+                                                        <PieChart>
+                                                            <Pie
+                                                                data={postTypeDistribution}
+                                                                dataKey="count"
+                                                                nameKey="type"
+                                                                cx="50%"
+                                                                cy="50%"
+                                                                innerRadius={45}
+                                                                outerRadius={85}
+                                                                labelLine={false}
+                                                            >
+                                                                {postTypeDistribution.map((item, index) => (
+                                                                    <Cell
+                                                                        key={`${item.type}-${index}`}
+                                                                        fill={PIE_COLORS[index % PIE_COLORS.length]}
+                                                                    />
+                                                                ))}
+                                                            </Pie>
+                                                            <Tooltip />
+                                                        </PieChart>
+                                                    </ResponsiveContainer>
+                                                </div>
+                                            )}
+                                        </CardContent>
+                                    </Card>
+
+                                    <Card className="border-stone-200">
+                                        <CardHeader className="pb-2">
+                                            <CardTitle className="text-sm text-stone-800">Top Posts by Interactions</CardTitle>
+                                            <CardDescription className="text-xs">
+                                                Highest performing individual posts in the active date window.
+                                            </CardDescription>
+                                        </CardHeader>
+                                        <CardContent>
+                                            {topPostsByInteractions.length === 0 ? (
+                                                <p className="text-xs text-stone-400">
+                                                    No interaction data available for posts.
+                                                </p>
+                                            ) : (
+                                                <div className="space-y-2">
+                                                    {topPostsByInteractions.slice(0, 6).map((post) => (
+                                                        <div
+                                                            key={post.postId}
+                                                            className="rounded-md border border-stone-100 bg-stone-50 px-3 py-2"
+                                                        >
+                                                            <p className="truncate text-xs font-medium text-stone-800">
+                                                                {post.title}
+                                                            </p>
+                                                            <p className="mt-0.5 text-[11px] text-stone-500">
+                                                                {normalizePostTypeLabel(post.postType)} ·{' '}
+                                                                {(post.metrics.total_interactions || 0).toLocaleString()}{' '}
+                                                                interactions
+                                                            </p>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </CardContent>
+                                    </Card>
+                                </div>
+                            </>
+                        )
                     ) : (
-                        <div className="space-y-2">
-                            {filteredPosts.map((post) => (
-                                <Card
-                                    key={post.postId}
-                                    className="cursor-pointer border-stone-200 transition-shadow hover:shadow-md"
-                                    onClick={() => setSelectedPost(post)}
+                        <>
+                            <div className="flex flex-wrap items-center gap-3">
+                                <div className="relative min-w-[220px] flex-1">
+                                    <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-stone-400" />
+                                    <Input
+                                        value={searchQ}
+                                        onChange={(event) => setSearchQ(event.target.value)}
+                                        placeholder="Fuzzy search by post title, description, ID, type, or account..."
+                                        className="pl-9"
+                                    />
+                                </div>
+                                <Select value={typeFilter} onValueChange={setTypeFilter}>
+                                    <SelectTrigger className="w-[190px]">
+                                        <SelectValue placeholder="Filter post type" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {typeOptions.map((typeOption) => (
+                                            <SelectItem key={typeOption} value={typeOption}>
+                                                {typeOption === 'all' ? 'All post types' : typeOption}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                                <Select
+                                    value={timeFilter}
+                                    onValueChange={(value) => setTimeFilter(value as PostTimeFilter)}
                                 >
-                                    <CardContent className="py-3">
-                                        <div className="flex flex-wrap items-center gap-3 text-sm">
-                                            <Badge variant="outline" className="text-[10px]">
-                                                {normalizePostTypeLabel(post.postType)}
-                                            </Badge>
-                                            <span className="font-medium text-stone-800">{post.title}</span>
-                                            <span className="text-xs text-stone-500">
-                                                {post.publishTime ? formatShortDate(post.publishTime) : 'Unknown date'}
-                                            </span>
-                                            <span className="ml-auto text-xs text-stone-600">
-                                                {(post.metrics.total_interactions || 0).toLocaleString()} interactions
-                                            </span>
-                                        </div>
-                                        <p className="mt-2 line-clamp-2 text-xs text-stone-600">
-                                            {post.description || `Post ID: ${post.postId}`}
-                                        </p>
+                                    <SelectTrigger className="w-[180px]">
+                                        <SelectValue placeholder="Filter time period" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {postTimeFilterOptions.map((option) => (
+                                            <SelectItem key={option.value} value={option.value}>
+                                                {option.label}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                                <Select
+                                    value={sortBy}
+                                    onValueChange={(value) =>
+                                        setSortBy(value as 'publish_time' | 'total_interactions' | 'views' | 'reach')
+                                    }
+                                >
+                                    <SelectTrigger className="w-[190px]">
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="publish_time">Sort by publish time</SelectItem>
+                                        <SelectItem value="total_interactions">Sort by interactions</SelectItem>
+                                        <SelectItem value="views">Sort by views</SelectItem>
+                                        <SelectItem value="reach">Sort by reach</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                                <div className="flex items-center gap-1">
+                                    <Button
+                                        variant={postView === 'grid' ? 'default' : 'outline'}
+                                        size="icon"
+                                        className="h-8 w-8"
+                                        onClick={() => setPostView('grid')}
+                                    >
+                                        <Grid3X3 className="h-3.5 w-3.5" />
+                                    </Button>
+                                    <Button
+                                        variant={postView === 'list' ? 'default' : 'outline'}
+                                        size="icon"
+                                        className="h-8 w-8"
+                                        onClick={() => setPostView('list')}
+                                    >
+                                        <List className="h-3.5 w-3.5" />
+                                    </Button>
+                                </div>
+                            </div>
+
+                            {isLoading ? (
+                                <Card>
+                                    <CardContent className="py-10 text-center text-sm text-stone-500">
+                                        Loading Instagram post insights...
                                     </CardContent>
                                 </Card>
-                            ))}
-                        </div>
+                            ) : filteredPosts.length === 0 ? (
+                                <Card>
+                                    <CardContent className="py-10 text-center text-sm text-stone-500">
+                                        No posts found for the current filters.
+                                    </CardContent>
+                                </Card>
+                            ) : postView === 'grid' ? (
+                                <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+                                    {filteredPosts.map((post) => (
+                                        <Card
+                                            key={post.postId}
+                                            className="cursor-pointer border-stone-200 transition-shadow hover:shadow-md"
+                                            onClick={() => setSelectedPost(post)}
+                                        >
+                                            <CardContent className="space-y-3 pt-5">
+                                                <div className="flex items-start justify-between gap-2">
+                                                    <div className="min-w-0">
+                                                        <p className="truncate text-sm font-semibold text-stone-800">
+                                                            {post.title}
+                                                        </p>
+                                                        <p className="text-[11px] text-stone-500">
+                                                            {post.publishTime
+                                                                ? formatShortDate(post.publishTime)
+                                                                : 'Unknown date'}
+                                                        </p>
+                                                    </div>
+                                                    <Badge variant="outline" className="text-[10px]">
+                                                        {normalizePostTypeLabel(post.postType)}
+                                                    </Badge>
+                                                </div>
+                                                <p className="line-clamp-3 text-xs text-stone-600">
+                                                    {post.description || `Post ID: ${post.postId}`}
+                                                </p>
+
+                                                <div className="grid grid-cols-2 gap-2 text-xs">
+                                                    <div className="rounded-md bg-stone-50 px-2 py-1">
+                                                        <p className="text-[10px] text-stone-500">Views</p>
+                                                        <p className="font-semibold text-stone-800">
+                                                            {(post.metrics.views || 0).toLocaleString()}
+                                                        </p>
+                                                    </div>
+                                                    <div className="rounded-md bg-stone-50 px-2 py-1">
+                                                        <p className="text-[10px] text-stone-500">Reach</p>
+                                                        <p className="font-semibold text-stone-800">
+                                                            {(post.metrics.reach || 0).toLocaleString()}
+                                                        </p>
+                                                    </div>
+                                                    <div className="rounded-md bg-stone-50 px-2 py-1">
+                                                        <p className="text-[10px] text-stone-500">Interactions</p>
+                                                        <p className="font-semibold text-stone-800">
+                                                            {(post.metrics.total_interactions || 0).toLocaleString()}
+                                                        </p>
+                                                    </div>
+                                                    <div className="rounded-md bg-stone-50 px-2 py-1">
+                                                        <p className="text-[10px] text-stone-500">Follows</p>
+                                                        <p className="font-semibold text-stone-800">
+                                                            {(post.metrics.follows || 0).toLocaleString()}
+                                                        </p>
+                                                    </div>
+                                                </div>
+
+                                                {post.permalink && (
+                                                    <a
+                                                        href={post.permalink}
+                                                        target="_blank"
+                                                        rel="noreferrer"
+                                                        className="inline-flex items-center gap-1 text-xs text-violet-700 hover:text-violet-800"
+                                                        onClick={(event) => event.stopPropagation()}
+                                                    >
+                                                        Open permalink
+                                                        <ExternalLink className="h-3 w-3" />
+                                                    </a>
+                                                )}
+                                            </CardContent>
+                                        </Card>
+                                    ))}
+                                </div>
+                            ) : (
+                                <div className="space-y-2">
+                                    {filteredPosts.map((post) => (
+                                        <Card
+                                            key={post.postId}
+                                            className="cursor-pointer border-stone-200 transition-shadow hover:shadow-md"
+                                            onClick={() => setSelectedPost(post)}
+                                        >
+                                            <CardContent className="py-3">
+                                                <div className="flex flex-wrap items-center gap-3 text-sm">
+                                                    <Badge variant="outline" className="text-[10px]">
+                                                        {normalizePostTypeLabel(post.postType)}
+                                                    </Badge>
+                                                    <span className="font-medium text-stone-800">{post.title}</span>
+                                                    <span className="text-xs text-stone-500">
+                                                        {post.publishTime
+                                                            ? formatShortDate(post.publishTime)
+                                                            : 'Unknown date'}
+                                                    </span>
+                                                    <span className="ml-auto text-xs text-stone-600">
+                                                        {(post.metrics.total_interactions || 0).toLocaleString()} interactions
+                                                    </span>
+                                                </div>
+                                                <p className="mt-2 line-clamp-2 text-xs text-stone-600">
+                                                    {post.description || `Post ID: ${post.postId}`}
+                                                </p>
+                                            </CardContent>
+                                        </Card>
+                                    ))}
+                                </div>
+                            )}
+                        </>
                     )}
                 </>
             )}
