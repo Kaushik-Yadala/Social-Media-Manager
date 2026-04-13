@@ -107,6 +107,80 @@ class TestInstagramInsightsRoutes:
         assert args[0] == "test_user"
         assert args[1].filename == "channelwise.zip"
 
+    def test_post_csv_import_route_calls_service(self):
+        expected_payload = {"message": "Post CSV import completed."}
+        with patch(
+            "routes.social_insights_routes.social_insights.import_instagram_posts_csv",
+            new=AsyncMock(return_value=expected_payload),
+        ) as mocked_service:
+            response = client.post(
+                "/manual/insta/posts/test_user/csvs",
+                files={
+                    "posts_csv": (
+                        "posts.csv",
+                        (
+                            b"Post ID,Account ID,Publish time,Post type,Date,Views,Likes,Shares,Comments,Saves,Reach,Follows\n"
+                            b"1801,1784,03/27/2026 06:08,IG image,Lifetime,160,5,3,0,0,45,0\n"
+                        ),
+                        "text/csv",
+                    )
+                },
+            )
+
+        assert response.status_code == 200
+        assert response.json() == expected_payload
+        args = mocked_service.await_args.args
+        assert args[0] == "test_user"
+        assert args[1].filename == "posts.csv"
+
+    def test_post_insights_route_calls_service(self):
+        expected_payload = {"data": [{"name": "views", "values": [{"value": 160}]}]}
+        with patch(
+            "routes.social_insights_routes.social_insights.get_instagram_post_insights",
+            new=AsyncMock(return_value=expected_payload),
+        ) as mocked_service:
+            response = client.get(
+                "/manual/insta/posts/1801/insights",
+                params={
+                    "metric": "views",
+                    "period": "lifetime",
+                },
+            )
+
+        assert response.status_code == 200
+        assert response.json() == expected_payload
+        mocked_service.assert_awaited_once_with(
+            instagram_media_id="1801",
+            metric="views",
+            period="lifetime",
+            post_id=None,
+            breakdown=None,
+        )
+
+    def test_post_insights_route_allows_empty_metric_and_post_id_option(self):
+        expected_payload = {"data": []}
+        with patch(
+            "routes.social_insights_routes.social_insights.get_instagram_post_insights",
+            new=AsyncMock(return_value=expected_payload),
+        ) as mocked_service:
+            response = client.get(
+                "/manual/insta/posts/ClubArtizen/insights",
+                params={
+                    "period": "lifetime",
+                    "post_id": "1801",
+                },
+            )
+
+        assert response.status_code == 200
+        assert response.json() == expected_payload
+        mocked_service.assert_awaited_once_with(
+            instagram_media_id="ClubArtizen",
+            metric=None,
+            period="lifetime",
+            post_id="1801",
+            breakdown=None,
+        )
+
 
 class TestFacebookInsightsRoutes:
     def test_insights_route_calls_service(self):

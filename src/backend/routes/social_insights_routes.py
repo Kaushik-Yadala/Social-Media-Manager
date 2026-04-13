@@ -61,6 +61,57 @@ async def import_instagram_folder_upload(
     return await social_insights.import_instagram_folder(ig_user_id, folder_archive)
 
 
+@router.post("/insta/posts/{ig_user_id}/csvs")
+async def import_instagram_posts_csv_upload(
+    ig_user_id: str,
+    posts_csv: Annotated[
+        UploadFile,
+        File(
+            ...,
+            description="Instagram post-level CSV export (for example posts.csv).",
+            json_schema_extra={"type": "string", "format": "binary"},
+        ),
+    ],
+):
+    return await social_insights.import_instagram_posts_csv(ig_user_id, posts_csv)
+
+
+@router.get("/insta/posts/{instagram_media_id}/insights")
+async def get_instagram_post_insights(
+    instagram_media_id: str,
+    metric: str | None = Query(
+        None,
+        description=(
+            "Comma-separated post metrics: "
+            "views,likes,comments,shares,saved,reach,follows,total_interactions. "
+            "Leave empty to return all available metrics."
+        ),
+    ),
+    period: str = Query(
+        "lifetime",
+        description="Per Instagram media insights documentation, period is lifetime.",
+    ),
+    post_id: str | None = Query(
+        None,
+        description=(
+            "Optional post ID when instagram_media_id is an ig_user_id. "
+            "If omitted, instagram_media_id can be either post_id or ig_user_id."
+        ),
+    ),
+    breakdown: str | None = Query(
+        None,
+        description="Optional breakdown. Not available for imported CSV post metrics.",
+    ),
+):
+    return await social_insights.get_instagram_post_insights(
+        instagram_media_id=instagram_media_id,
+        metric=metric,
+        period=period,
+        post_id=post_id,
+        breakdown=breakdown,
+    )
+
+
 @router.get("/facebook/insights/{fb_user_id}")
 async def get_facebook_insights(
     fb_user_id: str,

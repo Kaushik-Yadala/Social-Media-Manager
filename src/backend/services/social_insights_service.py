@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import csv
 import io
+import re
 import zipfile
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
@@ -15,6 +16,7 @@ from pymongo.errors import PyMongoError
 
 from core.config import settings
 from core.database import db
+from models.social_insights_models import InstagramPostInsightDocument
 
 ENCODING_CANDIDATES = (
     "utf-8-sig",
@@ -111,6 +113,67 @@ FACEBOOK_METRIC_META = {
     },
 }
 
+INSTAGRAM_POST_METRIC_HEADER_ALIASES = {
+    "views": "views",
+    "likes": "likes",
+    "shares": "shares",
+    "comments": "comments",
+    "saves": "saved",
+    "saved": "saved",
+    "reach": "reach",
+    "follows": "follows",
+}
+
+INSTAGRAM_POST_METRIC_QUERY_ALIASES = {
+    "save": "saved",
+    "saves": "saved",
+    "saved": "saved",
+}
+
+INSTAGRAM_POST_METRIC_META = {
+    "views": {
+        "title": "Views",
+        "description": "Total number of times the media has been seen.",
+    },
+    "likes": {
+        "title": "Likes",
+        "description": "Number of likes on the media object.",
+    },
+    "comments": {
+        "title": "Comments",
+        "description": "Number of comments on the media object.",
+    },
+    "shares": {
+        "title": "Shares",
+        "description": "Number of shares of the media object.",
+    },
+    "saved": {
+        "title": "Saved",
+        "description": "Number of times the media object was saved.",
+    },
+    "reach": {
+        "title": "Reach",
+        "description": "Number of unique Instagram users that have seen the media object.",
+    },
+    "follows": {
+        "title": "Follows",
+        "description": "Number of Instagram users following the account from this media.",
+    },
+    "total_interactions": {
+        "title": "Total interactions",
+        "description": (
+            "Total interactions (likes, comments, shares, and saved) computed "
+            "from imported post metrics."
+        ),
+    },
+}
+
+INSTAGRAM_POST_ALLOWED_METRICS_BY_MEDIA_PRODUCT = {
+    "FEED": {"views", "likes", "comments", "shares", "saved", "reach", "follows", "total_interactions"},
+    "REELS": {"views", "likes", "comments", "shares", "saved", "reach", "total_interactions"},
+    "STORY": {"views", "reach", "follows", "shares", "total_interactions"},
+}
+
 def _metric_name_aliases(platform: str) -> dict[str, str]:
     if platform == "instagram":
         return INSTAGRAM_METRIC_NAME_ALIASES
@@ -127,6 +190,21 @@ def _get_collection(platform: str):
         collection_name = settings.facebook_collection_name
 
     return db.client[settings.database_name][collection_name]
+
+
+async def _get_instagram_posts_collection():
+    if db.client is None:
+        raise HTTPException(status_code=503, detail="Database is not initialized.")
+
+    collection = db.client[settings.database_name][settings.instagram_posts_collection_name]
+    try:
+        await collection.create_index("post_id", unique=True, name="instagram_post_id_unique")
+        await collection.create_index("ig_user_id", name="instagram_post_ig_user_id")
+        await collection.create_index("publish_time", name="instagram_post_publish_time")
+    except PyMongoError as exc:
+        raise HTTPException(status_code=500, detail=f"Database index setup failed: {exc}") from exc
+
+    return collection
 
 
 def normalize_metric_name(value: str, aliases: dict[str, str] | None = None) -> str:
@@ -378,6 +456,368 @@ def merge_csv_updates(
             merged_updates[date_key].update(metric_updates)
 
     return merged_updates, len(csv_payloads), sorted(discovered_metrics)
+
+
+def _parse_instagram_post_publish_time(
+    raw_value: str,
+    source_name: str,
+    row_number: int,
+) -> datetime | None:
+    text = raw_value.strip().strip('"')
+    if not text:
+        return None
+
+    for date_format in ("%m/%d/%Y %H:%M", "%m/%d/%Y %H:%M:%S"):
+        try:
+            parsed = datetime.strptime(text, date_format)
+            return parsed.replace(tzinfo=timezone.utc)
+        except ValueError:
+            continue
+
+    try:
+        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise ValueError(
+            f"{source_name}: invalid publish time '{text}' at row {row_number}."
+        ) from exc
+
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def _post_csv_cell(
+    row: dict[str, str | None],
+    header_map: dict[str, str],
+    normalized_header: str,
+) -> str:
+    source_column = header_map.get(normalized_header)
+    if not source_column:
+        return ""
+    return (row.get(source_column) or "").strip().strip('"')
+
+
+def _parse_optional_post_number(
+    *,
+    raw_value: str,
+    source_name: str,
+    row_number: int,
+    column_name: str,
+) -> int | float | None:
+    if not raw_value:
+        return None
+
+    try:
+        return parse_numeric_value(raw_value)
+    except ValueError as exc:
+        raise ValueError(
+            f"{source_name}: invalid number '{raw_value}' for '{column_name}' at row {row_number}."
+        ) from exc
+
+
+def _parse_instagram_posts_csv(
+    source_name: str,
+    content: bytes,
+    ig_user_id: str,
+) -> tuple[list[InstagramPostInsightDocument], list[str]]:
+    decoded = decode_csv_bytes(content)
+    reader = csv.DictReader(io.StringIO(decoded))
+    if reader.fieldnames is None:
+        raise ValueError(f"{source_name}: CSV is missing a header row.")
+
+    header_map: dict[str, str] = {}
+    for raw_header in reader.fieldnames:
+        if not raw_header:
+            continue
+        normalized_header = normalize_metric_name(raw_header)
+        if normalized_header and normalized_header not in header_map:
+            header_map[normalized_header] = raw_header
+
+    if "post_id" not in header_map:
+        raise ValueError(f"{source_name}: missing required 'Post ID' column.")
+
+    metric_columns: dict[str, str] = {}
+    for normalized_header, metric_key in INSTAGRAM_POST_METRIC_HEADER_ALIASES.items():
+        source_column = header_map.get(normalized_header)
+        if source_column and metric_key not in metric_columns:
+            metric_columns[metric_key] = source_column
+
+    if not metric_columns:
+        raise ValueError(
+            f"{source_name}: no supported metric columns found. "
+            "Expected at least one of Views, Likes, Shares, Comments, Saves, Reach, Follows."
+        )
+
+    documents_by_post_id: dict[str, InstagramPostInsightDocument] = {}
+    discovered_metrics: set[str] = set()
+
+    for row_number, row in enumerate(reader, start=2):
+        post_id = _post_csv_cell(row, header_map, "post_id")
+        if not post_id:
+            raise ValueError(f"{source_name}: missing Post ID at row {row_number}.")
+
+        metrics: dict[str, int | float] = {}
+        for metric_key, source_column in metric_columns.items():
+            raw_value = (row.get(source_column) or "").strip().strip('"')
+            parsed_value = _parse_optional_post_number(
+                raw_value=raw_value,
+                source_name=source_name,
+                row_number=row_number,
+                column_name=source_column,
+            )
+            if parsed_value is None:
+                continue
+            metrics[metric_key] = parsed_value
+
+        interaction_keys = ("likes", "comments", "shares", "saved")
+        interaction_values = [float(metrics[key]) for key in interaction_keys if key in metrics]
+        if interaction_values:
+            metrics["total_interactions"] = _coerce_number(sum(interaction_values))
+
+        discovered_metrics.update(metrics.keys())
+
+        publish_time_value = _post_csv_cell(row, header_map, "publish_time")
+        publish_time = _parse_instagram_post_publish_time(
+            publish_time_value,
+            source_name,
+            row_number,
+        )
+
+        duration_sec = _parse_optional_post_number(
+            raw_value=_post_csv_cell(row, header_map, "duration_sec"),
+            source_name=source_name,
+            row_number=row_number,
+            column_name="Duration (sec)",
+        )
+
+        post_document = InstagramPostInsightDocument(
+            post_id=post_id,
+            ig_user_id=ig_user_id,
+            account_id=_post_csv_cell(row, header_map, "account_id") or None,
+            account_username=_post_csv_cell(row, header_map, "account_username") or None,
+            account_name=_post_csv_cell(row, header_map, "account_name") or None,
+            description=_post_csv_cell(row, header_map, "description") or None,
+            duration_sec=duration_sec,
+            publish_time=publish_time,
+            permalink=_post_csv_cell(row, header_map, "permalink") or None,
+            post_type=_post_csv_cell(row, header_map, "post_type") or None,
+            data_comment=_post_csv_cell(row, header_map, "data_comment") or None,
+            period=(_post_csv_cell(row, header_map, "date").lower() or "lifetime"),
+            metrics=metrics,
+        )
+        documents_by_post_id[post_id] = post_document
+
+    if not documents_by_post_id:
+        raise ValueError(f"{source_name}: no data rows were found.")
+
+    return list(documents_by_post_id.values()), sorted(discovered_metrics)
+
+
+def _infer_instagram_media_product_type(post_type: str | None) -> str:
+    normalized = normalize_metric_name(post_type or "")
+    if "reel" in normalized:
+        return "REELS"
+    if "story" in normalized:
+        return "STORY"
+    return "FEED"
+
+
+def _normalize_instagram_post_metric_query(metric_name: str) -> str:
+    normalized = normalize_metric_name(metric_name)
+    if not normalized:
+        return normalized
+    return INSTAGRAM_POST_METRIC_QUERY_ALIASES.get(normalized, normalized)
+
+
+def _case_insensitive_exact_match(value: str) -> dict[str, str]:
+    return {"$regex": f"^{re.escape(value)}$", "$options": "i"}
+
+
+def _post_metrics_with_derived_interactions(
+    post_document: dict[str, Any],
+) -> dict[str, int | float]:
+    stored_metrics = post_document.get("metrics")
+    if not isinstance(stored_metrics, dict):
+        return {}
+
+    metrics = dict(stored_metrics)
+    if "total_interactions" in metrics:
+        return metrics
+
+    interaction_keys = ("likes", "comments", "shares", "saved")
+    interaction_values: list[float] = []
+    for key in interaction_keys:
+        raw_value = metrics.get(key)
+        if raw_value is None:
+            continue
+        try:
+            interaction_values.append(float(raw_value))
+        except (TypeError, ValueError):
+            continue
+
+    if interaction_values:
+        metrics["total_interactions"] = _coerce_number(sum(interaction_values))
+
+    return metrics
+
+
+def _validate_requested_post_metrics(metric: str | None) -> list[str] | None:
+    if metric is None:
+        return None
+
+    requested_metrics = [item.strip() for item in metric.split(",") if item.strip()]
+    if not requested_metrics:
+        return None
+
+    supported_metrics = set(INSTAGRAM_POST_METRIC_META.keys())
+    normalized_metrics: list[str] = []
+    for requested_metric in requested_metrics:
+        normalized_metric = _normalize_instagram_post_metric_query(requested_metric)
+        if normalized_metric not in supported_metrics:
+            supported = ",".join(sorted(supported_metrics))
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unsupported metric '{requested_metric}'. Supported metrics: {supported}.",
+            )
+        if normalized_metric not in normalized_metrics:
+            normalized_metrics.append(normalized_metric)
+
+    return normalized_metrics
+
+
+def _selected_post_metrics(
+    post_document: dict[str, Any],
+    requested_metrics: list[str] | None,
+) -> list[str]:
+    if requested_metrics is not None:
+        return requested_metrics
+
+    media_product_type = _infer_instagram_media_product_type(post_document.get("post_type"))
+    allowed_metrics = INSTAGRAM_POST_ALLOWED_METRICS_BY_MEDIA_PRODUCT.get(
+        media_product_type,
+        set(INSTAGRAM_POST_METRIC_META.keys()),
+    )
+
+    metrics = _post_metrics_with_derived_interactions(post_document)
+    available_metrics = [
+        metric_name
+        for metric_name in metrics.keys()
+        if metric_name in INSTAGRAM_POST_METRIC_META and metric_name in allowed_metrics
+    ]
+
+    if available_metrics:
+        return sorted(set(available_metrics))
+
+    return sorted(allowed_metrics)
+
+
+def _instagram_post_metric_payload(
+    *,
+    post_document: dict[str, Any],
+    metric: str,
+    response_metric: str,
+    instagram_media_id: str,
+) -> dict[str, Any]:
+    metric_meta = _metric_meta(metric, INSTAGRAM_POST_METRIC_META)
+    media_product_type = _infer_instagram_media_product_type(post_document.get("post_type"))
+    allowed_metrics = INSTAGRAM_POST_ALLOWED_METRICS_BY_MEDIA_PRODUCT.get(media_product_type, set())
+
+    values: list[dict[str, int | float]] = []
+    if metric in allowed_metrics:
+        metrics = _post_metrics_with_derived_interactions(post_document)
+        raw_value = metrics.get(metric)
+        if raw_value is not None:
+            try:
+                values = [{"value": _coerce_number(float(raw_value))}]
+            except (TypeError, ValueError):
+                values = []
+
+    return {
+        "name": response_metric,
+        "period": "lifetime",
+        "values": values,
+        "title": metric_meta["title"],
+        "description": metric_meta["description"],
+        "id": f"{instagram_media_id}/insights/{response_metric}/lifetime",
+    }
+
+
+def _post_insights_for_single_document(
+    *,
+    post_document: dict[str, Any],
+    requested_metrics: list[str] | None,
+) -> list[dict[str, Any]]:
+    post_id = str(post_document.get("post_id") or "")
+    metric_keys = _selected_post_metrics(post_document, requested_metrics)
+    return [
+        _instagram_post_metric_payload(
+            post_document=post_document,
+            metric=metric_key,
+            response_metric=metric_key,
+            instagram_media_id=post_id,
+        )
+        for metric_key in metric_keys
+    ]
+
+
+def _as_utc_iso(value: datetime | None) -> str | None:
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def _postwise_response_entry(
+    *,
+    post_document: dict[str, Any],
+    requested_metrics: list[str] | None,
+) -> dict[str, Any]:
+    publish_time = post_document.get("publish_time")
+    return {
+        "post_id": str(post_document.get("post_id") or ""),
+        "ig_user_id": post_document.get("ig_user_id"),
+        "account_id": post_document.get("account_id"),
+        "account_username": post_document.get("account_username"),
+        "account_name": post_document.get("account_name"),
+        "post_type": post_document.get("post_type"),
+        "publish_time": _as_utc_iso(publish_time) if isinstance(publish_time, datetime) else None,
+        "permalink": post_document.get("permalink"),
+        "insights": _post_insights_for_single_document(
+            post_document=post_document,
+            requested_metrics=requested_metrics,
+        ),
+    }
+
+
+async def _upsert_instagram_posts(
+    documents: list[InstagramPostInsightDocument],
+) -> tuple[int, int]:
+    if not documents:
+        return 0, 0
+
+    collection = await _get_instagram_posts_collection()
+    created_entries = 0
+    updated_entries = 0
+
+    for document in documents:
+        payload = document.model_dump(mode="python")
+        payload["updated_at"] = datetime.now(timezone.utc)
+        try:
+            result = await collection.update_one(
+                {"post_id": document.post_id},
+                {"$set": payload},
+                upsert=True,
+            )
+        except PyMongoError as exc:
+            raise HTTPException(status_code=500, detail=f"Database write failed: {exc}") from exc
+
+        if result.upserted_id is not None:
+            created_entries += 1
+        elif result.matched_count:
+            updated_entries += 1
+
+    return created_entries, updated_entries
 
 
 def _metric_meta(metric: str, metric_map: dict[str, dict[str, str]]) -> dict[str, str]:
@@ -749,6 +1189,112 @@ async def import_instagram_folder(ig_user_id: str, folder_archive: UploadFile) -
     )
     result["archive_name"] = archive_name
     return result
+
+
+async def import_instagram_posts_csv(
+    ig_user_id: str,
+    posts_csv: UploadFile,
+) -> dict[str, Any]:
+    file_name = posts_csv.filename or "posts.csv"
+    file_content = await posts_csv.read()
+    if not file_content:
+        raise HTTPException(status_code=400, detail="Uploaded post CSV is empty.")
+
+    if not file_name.lower().endswith(".csv"):
+        raise HTTPException(status_code=400, detail="Post upload must be a CSV file.")
+
+    try:
+        documents, metric_keys = _parse_instagram_posts_csv(file_name, file_content, ig_user_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    created_entries, updated_entries = await _upsert_instagram_posts(documents)
+
+    return {
+        "message": "Post CSV import completed.",
+        "source": "uploaded_post_csv",
+        "ig_user_id": ig_user_id,
+        "processed_file": file_name,
+        "processed_posts": len(documents),
+        "created_entries": created_entries,
+        "updated_entries": updated_entries,
+        "metric_keys": metric_keys,
+    }
+
+
+async def get_instagram_post_insights(
+    instagram_media_id: str,
+    metric: str | None = None,
+    period: str = "lifetime",
+    post_id: str | None = None,
+    breakdown: str | None = None,
+) -> dict[str, Any]:
+    normalized_period = period.strip().lower() or "lifetime"
+    if normalized_period != "lifetime":
+        raise HTTPException(
+            status_code=400,
+            detail="Instagram post insights support only period=lifetime.",
+        )
+
+    if breakdown:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Breakdowns are not available for imported post metrics. "
+                "Please request metrics without the breakdown parameter."
+            ),
+        )
+
+    requested_metrics = _validate_requested_post_metrics(metric)
+
+    collection = await _get_instagram_posts_collection()
+    try:
+        if post_id:
+            post_document = await collection.find_one(
+                {
+                    "ig_user_id": _case_insensitive_exact_match(instagram_media_id),
+                    "post_id": post_id,
+                }
+            )
+            if not post_document:
+                return {"data": []}
+
+            return {
+                "data": _post_insights_for_single_document(
+                    post_document=post_document,
+                    requested_metrics=requested_metrics,
+                )
+            }
+
+        post_document = await collection.find_one({"post_id": instagram_media_id})
+        if post_document:
+            return {
+                "data": _post_insights_for_single_document(
+                    post_document=post_document,
+                    requested_metrics=requested_metrics,
+                )
+            }
+
+        post_documents = await (
+            collection.find({"ig_user_id": _case_insensitive_exact_match(instagram_media_id)})
+            .sort("publish_time", -1)
+            .to_list(length=None)
+        )
+    except PyMongoError as exc:
+        raise HTTPException(status_code=500, detail=f"Database query failed: {exc}") from exc
+
+    if not post_documents:
+        return {"data": []}
+
+    return {
+        "data": [
+            _postwise_response_entry(
+                post_document=post_document,
+                requested_metrics=requested_metrics,
+            )
+            for post_document in post_documents
+        ]
+    }
 
 
 async def get_facebook_insights(
