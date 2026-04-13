@@ -20,6 +20,7 @@ import {
     ChevronRight,
     Palette,
     Globe,
+    FileUp,
 } from 'lucide-react';
 
 interface NavItem {
@@ -40,6 +41,7 @@ const navigation: NavItem[] = [
             { label: 'LinkedIn', href: '/channels/linkedin', icon: Linkedin },
             { label: 'WhatsApp', href: '/channels/whatsapp', icon: MessageCircle },
             { label: 'YouTube', href: '/channels/youtube', icon: Youtube },
+            { label: 'Manual Uploads', href: '/channels/manual-upload', icon: FileUp },
         ],
     },
     { label: 'Statistics', href: '/statistics', icon: BarChart3 },
