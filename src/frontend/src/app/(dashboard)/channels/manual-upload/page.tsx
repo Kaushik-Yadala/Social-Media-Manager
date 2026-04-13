@@ -29,6 +29,7 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
 import {
     getManualUploadPath,
+    ManualInstagramUploadScope,
     ManualPlatform,
     ManualUploadMode,
     ManualUploadResult,
@@ -100,8 +101,31 @@ function formatFileSize(bytes: number): string {
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+function getSuccessStats(success: ManualUploadResult): Array<{ label: string; value: number }> {
+    const stats: Array<{ label: string; value: number }> = [];
+
+    if (typeof success.processed_posts === 'number') {
+        stats.push({ label: 'Processed posts', value: success.processed_posts });
+    }
+    if (typeof success.processed_files === 'number') {
+        stats.push({ label: 'Processed files', value: success.processed_files });
+    }
+    if (typeof success.touched_dates === 'number') {
+        stats.push({ label: 'Touched dates', value: success.touched_dates });
+    }
+    if (typeof success.created_entries === 'number') {
+        stats.push({ label: 'Created rows', value: success.created_entries });
+    }
+    if (typeof success.updated_entries === 'number') {
+        stats.push({ label: 'Updated rows', value: success.updated_entries });
+    }
+
+    return stats;
+}
+
 export default function ManualUploadPage() {
     const [platform, setPlatform] = useState<ManualPlatform>('insta');
+    const [instagramScope, setInstagramScope] = useState<ManualInstagramUploadScope>('channelwise');
     const [uploadMode, setUploadMode] = useState<ManualUploadMode>('csv');
     const [accountId, setAccountId] = useState('');
     const [files, setFiles] = useState<File[]>([]);
@@ -113,14 +137,25 @@ export default function ManualUploadPage() {
 
     const fileInputRef = useRef<HTMLInputElement | null>(null);
     const theme = PLATFORM_THEMES[platform];
+    const isInstagramPosts = platform === 'insta' && instagramScope === 'posts';
 
     const endpointResolved = useMemo(() => {
         const normalizedId = accountId.trim() || DEFAULT_ACCOUNT_ID;
-        return getManualUploadPath(platform, uploadMode, normalizedId);
-    }, [accountId, platform, uploadMode]);
+        return getManualUploadPath(platform, uploadMode, normalizedId, instagramScope);
+    }, [accountId, instagramScope, platform, uploadMode]);
 
-    const selectedFileLabel = uploadMode === 'csv' ? 'CSV file(s)' : 'ZIP archive';
-    const accept = uploadMode === 'csv' ? '.csv,text/csv' : '.zip,application/zip';
+    const selectedFileLabel = isInstagramPosts
+        ? 'Post CSV file'
+        : uploadMode === 'csv'
+          ? 'CSV file(s)'
+          : 'ZIP archive';
+    const accept =
+        isInstagramPosts || uploadMode === 'csv' ? '.csv,text/csv' : '.zip,application/zip';
+    const allowsMultipleSelection = uploadMode === 'csv' && !isInstagramPosts;
+    const uploadDescription = isInstagramPosts
+        ? 'Upload a single posts.csv file to update Instagram post-wise insights in the database.'
+        : 'Choose platform, file type, and account ID. Then drag files into the upload zone.';
+    const successStats = success ? getSuccessStats(success) : [];
 
     const clearNativeFileInput = () => {
         if (fileInputRef.current) {
@@ -140,6 +175,16 @@ export default function ManualUploadPage() {
         setSuccess(null);
     };
 
+    const handleInstagramScopeChange = (nextScope: ManualInstagramUploadScope) => {
+        setInstagramScope(nextScope);
+        if (nextScope === 'posts') {
+            setUploadMode('csv');
+        }
+        resetSelectedFiles();
+        setErrorMessage(null);
+        setSuccess(null);
+    };
+
     const handleUploadModeChange = (nextMode: ManualUploadMode) => {
         setUploadMode(nextMode);
         resetSelectedFiles();
@@ -150,6 +195,28 @@ export default function ManualUploadPage() {
     const handleSelectedFiles = (selected: File[]) => {
         if (selected.length === 0) {
             setFiles([]);
+            return;
+        }
+
+        if (isInstagramPosts) {
+            const invalidCsv = selected.filter((file) => !isCsvFile(file));
+            if (invalidCsv.length > 0) {
+                setErrorMessage('Post-wise mode only accepts one .csv file.');
+                setFiles([]);
+                clearNativeFileInput();
+                return;
+            }
+
+            if (selected.length !== 1) {
+                setErrorMessage('Post-wise mode requires exactly one .csv file.');
+                setFiles([]);
+                clearNativeFileInput();
+                return;
+            }
+
+            setFiles([selected[0]]);
+            setErrorMessage(null);
+            setSuccess(null);
             return;
         }
 
@@ -214,11 +281,17 @@ export default function ManualUploadPage() {
             return;
         }
 
+        if (isInstagramPosts && files.length !== 1) {
+            setErrorMessage('Post-wise mode requires exactly one .csv file.');
+            return;
+        }
+
         setIsSubmitting(true);
         try {
             const payload = await uploadManualInsights({
                 platform,
                 mode: uploadMode,
+                instagramScope,
                 accountId: normalizedAccountId,
                 files,
             });
@@ -237,7 +310,7 @@ export default function ManualUploadPage() {
             <div>
                 <h1 className="text-2xl font-heading font-bold text-stone-900">Manual Data Upload</h1>
                 <p className="mt-1 text-sm text-stone-500">
-                    Upload CSVs or ZIP archives to update Instagram/Facebook insights in the database.
+                    Upload CSVs or ZIP archives to update channel insights, or upload Instagram posts.csv for post-wise insights.
                 </p>
             </div>
 
@@ -253,7 +326,7 @@ export default function ManualUploadPage() {
                         </Badge>
                     </div>
                     <CardDescription className="text-stone-600">
-                        Choose platform, file type, and account ID. Then drag files into the upload zone.
+                        {uploadDescription}
                     </CardDescription>
                 </CardHeader>
 
@@ -285,21 +358,58 @@ export default function ManualUploadPage() {
                             </Tabs>
                         </div>
 
+                        {platform === 'insta' && (
+                            <div className="space-y-2">
+                                <Label>Instagram Data Scope</Label>
+                                <Tabs
+                                    value={instagramScope}
+                                    onValueChange={(value) =>
+                                        handleInstagramScopeChange(value as ManualInstagramUploadScope)
+                                    }
+                                    className="w-full"
+                                >
+                                    <TabsList className="grid h-auto w-full grid-cols-2 bg-violet-100/70 p-1">
+                                        <TabsTrigger
+                                            value="channelwise"
+                                            className="py-2 data-[state=active]:bg-violet-200 data-[state=active]:text-violet-800"
+                                        >
+                                            Channelwise
+                                        </TabsTrigger>
+                                        <TabsTrigger
+                                            value="posts"
+                                            className="py-2 data-[state=active]:bg-violet-200 data-[state=active]:text-violet-800"
+                                        >
+                                            Post-wise
+                                        </TabsTrigger>
+                                    </TabsList>
+                                </Tabs>
+                                <p className={cn('text-xs', theme.infoClass)}>
+                                    {instagramScope === 'posts'
+                                        ? 'Post-wise upload accepts one posts.csv file and updates /manual/insta/posts/{ig_user_id}/csvs.'
+                                        : 'Channelwise upload supports CSV files or a ZIP folder archive.'}
+                                </p>
+                            </div>
+                        )}
+
                         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                             <div className="space-y-2">
                                 <Label>Upload Type</Label>
-                                <Select
-                                    value={uploadMode}
-                                    onValueChange={(value) => handleUploadModeChange(value as ManualUploadMode)}
-                                >
-                                    <SelectTrigger className="w-full">
-                                        <SelectValue placeholder="Choose upload type" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="csv">CSV files</SelectItem>
-                                        <SelectItem value="zip">ZIP folder archive</SelectItem>
-                                    </SelectContent>
-                                </Select>
+                                {isInstagramPosts ? (
+                                    <Input value="CSV file (posts.csv)" disabled />
+                                ) : (
+                                    <Select
+                                        value={uploadMode}
+                                        onValueChange={(value) => handleUploadModeChange(value as ManualUploadMode)}
+                                    >
+                                        <SelectTrigger className="w-full">
+                                            <SelectValue placeholder="Choose upload type" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="csv">CSV files</SelectItem>
+                                            <SelectItem value="zip">ZIP folder archive</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                )}
                             </div>
 
                             <div className="space-y-2">
@@ -322,7 +432,7 @@ export default function ManualUploadPage() {
                             id="manual-upload-file"
                             type="file"
                             accept={accept}
-                            multiple={uploadMode === 'csv'}
+                            multiple={allowsMultipleSelection}
                             onChange={handleFileChange}
                             className="hidden"
                         />
@@ -352,14 +462,20 @@ export default function ManualUploadPage() {
                                 )}
                             >
                                 <div className={cn('rounded-full p-4', theme.endpointClass)}>
-                                    {uploadMode === 'csv' ? (
+                                    {isInstagramPosts || uploadMode === 'csv' ? (
                                         <FileSpreadsheet className="h-8 w-8" />
                                     ) : (
                                         <FileArchive className="h-8 w-8" />
                                     )}
                                 </div>
                                 <p className="mt-4 text-lg font-semibold text-stone-900">
-                                    Drag and drop {uploadMode === 'csv' ? 'CSV files' : 'a ZIP archive'} here
+                                    Drag and drop{' '}
+                                    {isInstagramPosts
+                                        ? 'a post CSV file'
+                                        : uploadMode === 'csv'
+                                          ? 'CSV files'
+                                          : 'a ZIP archive'}{' '}
+                                    here
                                 </p>
                                 <p className="mt-1 text-sm text-stone-500">
                                     or click to browse from your computer
@@ -374,12 +490,15 @@ export default function ManualUploadPage() {
                                     }}
                                 >
                                     <UploadCloud className="h-4 w-4" />
-                                    Choose file{uploadMode === 'csv' ? 's' : ''}
+                                    Choose file
+                                    {isInstagramPosts ? '' : uploadMode === 'csv' ? 's' : ''}
                                 </Button>
                                 <p className={cn('mt-4 text-xs', theme.infoClass)}>
-                                    {uploadMode === 'csv'
-                                        ? 'Supports one or more .csv files'
-                                        : 'Supports one .zip file containing CSV files'}
+                                    {isInstagramPosts
+                                        ? 'Supports exactly one .csv file (for example posts.csv)'
+                                        : uploadMode === 'csv'
+                                          ? 'Supports one or more .csv files'
+                                          : 'Supports one .zip file containing CSV files'}
                                 </p>
                             </div>
                         </div>
@@ -438,24 +557,26 @@ export default function ManualUploadPage() {
                                     </div>
                                 </div>
 
-                                <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-emerald-900 md:grid-cols-4">
-                                    <div className="rounded-md bg-white/70 px-2 py-1">
-                                        <span className="block text-[11px] text-emerald-700">Processed files</span>
-                                        <span className="font-semibold">{success.processed_files ?? 0}</span>
+                                {successStats.length > 0 && (
+                                    <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-emerald-900 md:grid-cols-4">
+                                        {successStats.map((stat) => (
+                                            <div
+                                                key={stat.label}
+                                                className="rounded-md bg-white/70 px-2 py-1"
+                                            >
+                                                <span className="block text-[11px] text-emerald-700">{stat.label}</span>
+                                                <span className="font-semibold">{stat.value}</span>
+                                            </div>
+                                        ))}
                                     </div>
-                                    <div className="rounded-md bg-white/70 px-2 py-1">
-                                        <span className="block text-[11px] text-emerald-700">Touched dates</span>
-                                        <span className="font-semibold">{success.touched_dates ?? 0}</span>
-                                    </div>
-                                    <div className="rounded-md bg-white/70 px-2 py-1">
-                                        <span className="block text-[11px] text-emerald-700">Created rows</span>
-                                        <span className="font-semibold">{success.created_entries ?? 0}</span>
-                                    </div>
-                                    <div className="rounded-md bg-white/70 px-2 py-1">
-                                        <span className="block text-[11px] text-emerald-700">Updated rows</span>
-                                        <span className="font-semibold">{success.updated_entries ?? 0}</span>
-                                    </div>
-                                </div>
+                                )}
+                                {typeof success.processed_file === 'string' &&
+                                    success.processed_file.length > 0 && (
+                                        <p className="mt-2 text-[11px] text-emerald-700">
+                                            Source file:{' '}
+                                            <span className="font-medium">{success.processed_file}</span>
+                                        </p>
+                                    )}
                                 {Array.isArray(success.metric_keys) && success.metric_keys.length > 0 && (
                                     <div className="mt-3">
                                         <p className="text-[11px] font-medium text-emerald-800">Imported metrics</p>

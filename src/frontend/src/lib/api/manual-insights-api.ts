@@ -9,6 +9,7 @@ const DEFAULT_MANUAL_ACCOUNT_ID = 'ClubArtizen';
 
 export type ManualPlatform = 'insta' | 'facebook';
 export type ManualUploadMode = 'csv' | 'zip';
+export type ManualInstagramUploadScope = 'channelwise' | 'posts';
 
 export interface ManualUploadResult {
   message: string;
@@ -21,12 +22,15 @@ export interface ManualUploadResult {
   updated_entries?: number;
   metric_keys?: string[];
   archive_name?: string;
+  processed_file?: string;
+  processed_posts?: number;
   [key: string]: unknown;
 }
 
 export interface ManualUploadInput {
   platform: ManualPlatform;
   mode: ManualUploadMode;
+  instagramScope?: ManualInstagramUploadScope;
   accountId: string;
   files: File[];
 }
@@ -46,9 +50,15 @@ export function getManualUploadPath(
   platform: ManualPlatform,
   mode: ManualUploadMode,
   accountId: string,
+  instagramScope: ManualInstagramUploadScope = 'channelwise',
 ): string {
   const normalizedAccountId = accountId.trim() || DEFAULT_MANUAL_ACCOUNT_ID;
   const safeId = encodeURIComponent(normalizedAccountId);
+
+  if (platform === 'insta' && instagramScope === 'posts') {
+    return `/manual/insta/posts/${safeId}/csvs`;
+  }
+
   const endpointType = mode === 'csv' ? 'csvs' : 'folders';
   return `/manual/${platform}/${endpointType}/${safeId}`;
 }
@@ -56,13 +66,20 @@ export function getManualUploadPath(
 export async function uploadManualInsights({
   platform,
   mode,
+  instagramScope = 'channelwise',
   accountId,
   files,
 }: ManualUploadInput): Promise<ManualUploadResult> {
-  const path = getManualUploadPath(platform, mode, accountId);
+  const path = getManualUploadPath(platform, mode, accountId, instagramScope);
   const formData = new FormData();
 
-  if (mode === 'csv') {
+  if (platform === 'insta' && instagramScope === 'posts') {
+    const postCsv = files[0];
+    if (!postCsv) {
+      throw new Error('Please choose a post CSV file to upload.');
+    }
+    formData.append('posts_csv', postCsv);
+  } else if (mode === 'csv') {
     files.forEach((file) => formData.append('files', file));
   } else {
     const archive = files[0];
