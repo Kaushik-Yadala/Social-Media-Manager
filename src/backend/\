@@ -1,0 +1,6 @@
+# Backend database settings
+MONGODB_URI=mongodb+srv://papitopeachpakalu_db_user:0fEcqrJjCDXAdq7W@cluster0.roud2m7.mongodb.net/?appName=Cluster0DATABASE_NAME=club_artizen_analytics
+
+# Instagram/Facebook insights collections
+INSTAGRAM_COLLECTION_NAME=instagram_insights_data
+FACEBOOK_COLLECTION_NAME=facebook_insights_data

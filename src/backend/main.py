@@ -12,6 +12,7 @@ from routes.auth_routes import router as auth_router
 from routes.li_routes import router as li_router
 from routes.ig_routes import router as ig_router
 from routes.wa_routes import router as wa_router
+from routes.social_insights_routes import router as social_insights_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -47,6 +48,7 @@ app.include_router(auth_router, prefix="/auth", tags=["Auth"])
 app.include_router(li_router)
 app.include_router(ig_router)
 app.include_router(wa_router)
+app.include_router(social_insights_router)
 
 
 # ── Root / Health ─────────────────────────────────────────────────────────────
@@ -59,4 +61,3 @@ def read_root():
 @app.get("/health", tags=["Root"])
 def health_check():
     return {"status": "ok"}
-
