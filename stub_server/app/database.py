@@ -6,7 +6,7 @@ Completely independent of the main backend — uses its own database.
 
 import os
 from dotenv import load_dotenv
-from motor.motor_asyncio import AsyncIOMotorClient
+from pymongo import AsyncMongoClient
 from beanie import init_beanie
 
 load_dotenv()  # reads stub_server/.env
@@ -18,8 +18,8 @@ DB_NAME = os.getenv("STUB_DB_NAME", "stub_instagram")
 
 
 async def init_db():
-    """Create Motor client and initialise Beanie with all document models."""
-    client = AsyncIOMotorClient(MONGO_URI)
+    """Create an async Mongo client and initialise Beanie models."""
+    client = AsyncMongoClient(MONGO_URI)
     await init_beanie(
         database=client[DB_NAME],
         document_models=[InstagramInsight],

@@ -1,116 +1,111 @@
 #!/usr/bin/env python3
 """
-Import a CSV file into MongoDB as InstagramInsight documents.
+Import CSV files/folders into MongoDB as InstagramInsight documents.
 
-The CSV must have a header row with columns matching the model fields:
-  date, views, profile_links_taps, total_interactions, reach, accounts_engaged, additional_follows
-
-Usage:
-    python scripts/csv_import.py --csv data.csv --ig-user-id test_user_1
-    python scripts/csv_import.py --csv data.csv --ig-user-id test_user_1 --mongo-uri mongodb://localhost:27017
+Examples:
+    python scripts/csv_import.py --ig-user-id test_user --folder dass-meta-data/instagram/channelwise
+    python scripts/csv_import.py --ig-user-id test_user --csv Reach.csv --csv Views.csv
 """
 
 import argparse
 import asyncio
-import csv
-import sys
 import os
-from datetime import datetime, timezone
+import sys
 from pathlib import Path
 
 # Add parent dir to path so we can import app modules
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from app.database import init_db, MONGO_URI
-from app.models.instagram import InstagramInsight
+from app.database import MONGO_URI, init_db
+from app.services.csv_ingest import (
+    collect_csv_files_from_folder,
+    expand_csv_payloads,
+    merge_csv_updates,
+    upsert_insights,
+)
 
 
-EXPECTED_COLUMNS = {
-    "date",
-    "views",
-    "profile_links_taps",
-    "total_interactions",
-    "reach",
-    "accounts_engaged",
-    "additional_follows",
-}
-
-
-def parse_date(value: str) -> datetime:
-    """Parse a date string into a timezone-aware UTC datetime."""
-    for fmt in ("%Y-%m-%d", "%Y-%m-%dT%H:%M:%S", "%m/%d/%Y", "%d/%m/%Y"):
-        try:
-            dt = datetime.strptime(value.strip(), fmt)
-            return dt.replace(tzinfo=timezone.utc)
-        except ValueError:
-            continue
-    raise ValueError(f"Cannot parse date: '{value}'")
-
-
-async def import_csv(csv_path: str, ig_user_id: str, mongo_uri: str):
-    """Read the CSV and insert each row as an InstagramInsight document."""
+async def run_import(
+    ig_user_id: str,
+    csv_paths: list[str],
+    folder_path: str | None,
+    mongo_uri: str,
+):
     os.environ["MONGO_URI"] = mongo_uri
     client = await init_db()
 
-    with open(csv_path, newline="", encoding="utf-8-sig") as f:
-        reader = csv.DictReader(f)
+    try:
+        payloads: list[tuple[str, bytes]] = []
 
-        # Validate columns
-        if reader.fieldnames is None:
-            print("❌ CSV has no header row.")
-            return
+        if folder_path:
+            folder = Path(folder_path).resolve()
+            if not folder.exists() or not folder.is_dir():
+                raise ValueError(f"Folder does not exist: {folder}")
+            payloads.extend(collect_csv_files_from_folder(folder))
 
-        csv_columns = {c.strip().lower() for c in reader.fieldnames}
-        missing = EXPECTED_COLUMNS - csv_columns
-        if missing:
-            print(f"⚠️  Missing columns: {missing}")
-            print(f"   Found columns: {csv_columns}")
-            print("   Will use 0 for missing metric fields.")
+        for raw_path in csv_paths:
+            path = Path(raw_path).resolve()
+            if not path.exists() or not path.is_file():
+                raise ValueError(f"CSV file not found: {path}")
+            payloads.append((path.name, path.read_bytes()))
 
-        count = 0
-        for row in reader:
-            # Normalise keys
-            row = {k.strip().lower(): v.strip() for k, v in row.items()}
+        if not payloads:
+            raise ValueError("Provide at least one --csv path or --folder path.")
 
-            try:
-                date = parse_date(row["date"])
-            except (ValueError, KeyError) as e:
-                print(f"⚠️  Skipping row: {e}")
-                continue
+        expanded_payloads = expand_csv_payloads(payloads)
+        updates_by_date, processed_files, metric_keys = merge_csv_updates(expanded_payloads)
+        created_entries, updated_entries = await upsert_insights(ig_user_id, updates_by_date)
 
-            entry = InstagramInsight(
-                ig_user_id=ig_user_id,
-                date=date,
-                views=int(row.get("views", 0) or 0),
-                profile_links_taps=int(row.get("profile_links_taps", 0) or 0),
-                total_interactions=int(row.get("total_interactions", 0) or 0),
-                reach=int(row.get("reach", 0) or 0),
-                accounts_engaged=int(row.get("accounts_engaged", 0) or 0),
-                additional_follows=int(row.get("additional_follows", 0) or 0),
-            )
-            await entry.insert()
-            count += 1
-
-    print(f"✅ Imported {count} rows for ig_user_id='{ig_user_id}' into MongoDB.")
-    client.close()
+        print("✅ Import complete")
+        print(f"   user_id: {ig_user_id}")
+        print(f"   processed_files: {processed_files}")
+        print(f"   touched_dates: {len(updates_by_date)}")
+        print(f"   created_entries: {created_entries}")
+        print(f"   updated_entries: {updated_entries}")
+        print(f"   metric_keys: {', '.join(metric_keys)}")
+    finally:
+        client.close()
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Import CSV data into the Instagram stub server DB.")
-    parser.add_argument("--csv", required=True, help="Path to the CSV file")
-    parser.add_argument("--ig-user-id", required=True, help="Instagram user/account ID to assign")
+    parser = argparse.ArgumentParser(
+        description="Import CSV data into the Instagram stub server DB."
+    )
+    parser.add_argument(
+        "--ig-user-id",
+        required=True,
+        help="Instagram user/account ID to assign",
+    )
+    parser.add_argument(
+        "--csv",
+        action="append",
+        default=[],
+        help="Path to a CSV file (can be passed multiple times)",
+    )
+    parser.add_argument(
+        "--folder",
+        help="Path to a folder containing CSV files",
+    )
     parser.add_argument(
         "--mongo-uri",
         default=MONGO_URI,
         help=f"MongoDB connection URI (default: {MONGO_URI})",
     )
+
     args = parser.parse_args()
 
-    if not Path(args.csv).exists():
-        print(f"❌ File not found: {args.csv}")
+    try:
+        asyncio.run(
+            run_import(
+                ig_user_id=args.ig_user_id,
+                csv_paths=args.csv,
+                folder_path=args.folder,
+                mongo_uri=args.mongo_uri,
+            )
+        )
+    except ValueError as exc:
+        print(f"❌ {exc}")
         sys.exit(1)
-
-    asyncio.run(import_csv(args.csv, args.ig_user_id, args.mongo_uri))
 
 
 if __name__ == "__main__":

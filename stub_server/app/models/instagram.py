@@ -1,5 +1,4 @@
 from datetime import datetime
-from typing import Optional
 from pydantic import Field
 from beanie import Document
 
@@ -16,13 +15,12 @@ class InstagramInsight(Document):
     # The date the metrics were recorded (stored as midnight UTC)
     date: datetime = Field(..., description="Date these metrics were recorded")
 
-    # ── Metrics (matching Meta's account-level insights) ──────────────
-    views: int = Field(default=0, description="Total number of times content was viewed")
-    profile_links_taps: int = Field(default=0, description="Taps on the bio link")
-    total_interactions: int = Field(default=0, description="Likes, saves, comments, and shares")
-    reach: int = Field(default=0, description="Unique accounts that saw content")
-    accounts_engaged: int = Field(default=0, description="Unique accounts that interacted")
-    additional_follows: int = Field(default=0, description="New followers gained")
+    # Dynamic metric map keyed by normalized CSV metric/column names.
+    # Examples: views, reach, content_interactions, instagram_link_clicks
+    metrics: dict[str, int | float] = Field(
+        default_factory=dict,
+        description="Metric values keyed by normalized metric names",
+    )
 
     class Settings:
         name = "instagram_insights_data"

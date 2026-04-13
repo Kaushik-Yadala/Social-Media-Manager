@@ -1,163 +1,203 @@
 """
-Insights router — the core API of the stub server.
-
-Endpoints:
-  GET /stub/insta/get_data/{ig_user_id}/insights
-      → returns Meta-style JSON for requested metrics/period/date-range
-  GET /stub/insta/create_entry/{ig_user_id}
-      → generates a new day's data via Gaussian sampling and returns it
+Insights router — supports CSV-driven upserts and Meta-style read responses.
 """
 
-from datetime import datetime, timezone, timedelta
-from typing import Optional
+from datetime import timedelta
+from typing import Annotated, Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, File, HTTPException, Query, UploadFile
 
 from app.models.instagram import InstagramInsight
-from app.services.generator import generate_entry, METRIC_FIELDS
+from app.services.csv_ingest import (
+    expand_csv_payloads,
+    merge_csv_updates,
+    parse_date_value,
+    upsert_insights,
+)
 
 router = APIRouter(prefix="/stub/insta", tags=["Instagram Insights"])
 
-# ── Metric metadata (mirrors Meta's title/description fields) ────────────────
+VALID_PERIODS = {"day", "week", "days_28", "month", "lifetime", "total_over_range"}
+
+METRIC_QUERY_ALIASES = {
+    "total_interactions": "content_interactions",
+    "profile_links_taps": "instagram_link_clicks",
+    "accounts_engaged": "instagram_profile_visits",
+    "additional_follows": "instagram_follows",
+}
 
 METRIC_META = {
     "views": {
         "title": "Views",
         "description": "Total number of times the content was viewed.",
     },
-    "profile_links_taps": {
-        "title": "Profile links taps",
-        "description": "The number of taps on the bio link.",
-    },
-    "total_interactions": {
-        "title": "Total interactions",
-        "description": "Number of likes, saves, comments, and shares on the media, minus the number of unlikes, unsaves, and deleted comments.",
-    },
     "reach": {
         "title": "Reach",
-        "description": "Number of unique Instagram accounts that have seen the content at least once. Reach is different from impressions, which can include multiple views by the same account. Metric is estimated.",
+        "description": "Number of unique Instagram accounts that saw the content.",
     },
-    "accounts_engaged": {
-        "title": "Accounts engaged",
-        "description": "The number of unique accounts that interacted with the content.",
+    "content_interactions": {
+        "title": "Content interactions",
+        "description": "Interactions such as likes, saves, comments, and shares.",
     },
-    "additional_follows": {
-        "title": "Follows",
-        "description": "The number of new followers gained.",
+    "instagram_link_clicks": {
+        "title": "Instagram link clicks",
+        "description": "Number of taps/clicks on links from Instagram.",
+    },
+    "instagram_profile_visits": {
+        "title": "Instagram profile visits",
+        "description": "Number of profile visits.",
+    },
+    "instagram_follows": {
+        "title": "Instagram follows",
+        "description": "Number of followers gained.",
     },
 }
 
-VALID_PERIODS = {"day", "week", "days_28", "month", "lifetime", "total_over_range"}
+
+def _metric_meta(metric: str) -> dict[str, str]:
+    default_title = metric.replace("_", " ").title()
+    return METRIC_META.get(
+        metric,
+        {
+            "title": default_title,
+            "description": f"Imported metric '{metric}'.",
+        },
+    )
 
 
-def _parse_date(value: str) -> datetime:
-    """
-    Parse a date that can be either:
-      • ISO-8601 string  (2025-04-09, 2025-04-09T00:00:00)
-      • Unix timestamp   (1712620800)
-    Returns a timezone-aware UTC datetime.
-    """
-    # Try unix timestamp first
-    try:
-        ts = float(value)
-        return datetime.fromtimestamp(ts, tz=timezone.utc)
-    except ValueError:
-        pass
+def _normalize_metric_query(metric_name: str) -> str:
+    return METRIC_QUERY_ALIASES.get(metric_name, metric_name)
 
-    # Try ISO format
-    try:
-        dt = datetime.fromisoformat(value)
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
-        return dt
-    except ValueError:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Invalid date format: '{value}'. Use ISO-8601 or Unix timestamp.",
-        )
+
+def _coerce_number(value: int | float) -> int | float:
+    if isinstance(value, float) and value.is_integer():
+        return int(value)
+    return value
 
 
 def _aggregate_for_period(
     entries: list[InstagramInsight],
-    metric: str,
+    stored_metric: str,
+    response_metric: str,
     period: str,
     ig_user_id: str,
 ) -> dict:
-    """
-    Build one element of the Meta-style `data` array for a single metric.
+    metric_entries = [
+        entry
+        for entry in sorted(entries, key=lambda item: item.date)
+        if stored_metric in entry.metrics
+    ]
+    metric_meta = _metric_meta(stored_metric)
 
-    For 'day' period: returns individual daily values with end_time.
-    For 'lifetime' / 'total_over_range': returns a single aggregated value.
-    For 'week' / 'days_28' / 'month': groups entries into windows.
-    """
+    if not metric_entries:
+        return {
+            "name": response_metric,
+            "period": period,
+            "values": [],
+            "title": metric_meta["title"],
+            "description": metric_meta["description"],
+            "id": f"{ig_user_id}/insights/{response_metric}/{period}",
+        }
 
     if period in ("lifetime", "total_over_range"):
-        total = sum(getattr(e, metric) for e in entries)
+        total = _coerce_number(
+            sum(entry.metrics[stored_metric] for entry in metric_entries)
+        )
         return {
-            "name": metric,
+            "name": response_metric,
             "period": period,
             "values": [{"value": total}],
-            "title": METRIC_META[metric]["title"],
-            "description": METRIC_META[metric]["description"],
-            "id": f"{ig_user_id}/insights/{metric}/{period}",
+            "title": metric_meta["title"],
+            "description": metric_meta["description"],
+            "id": f"{ig_user_id}/insights/{response_metric}/{period}",
         }
 
     if period == "day":
-        values = []
-        for e in sorted(entries, key=lambda x: x.date):
-            values.append({
-                "value": getattr(e, metric),
-                "end_time": e.date.strftime("%Y-%m-%dT%H:%M:%S+0000"),
-            })
+        values = [
+            {
+                "value": _coerce_number(entry.metrics[stored_metric]),
+                "end_time": entry.date.strftime("%Y-%m-%dT%H:%M:%S+0000"),
+            }
+            for entry in metric_entries
+        ]
         return {
-            "name": metric,
+            "name": response_metric,
             "period": period,
             "values": values,
-            "title": METRIC_META[metric]["title"],
-            "description": METRIC_META[metric]["description"],
-            "id": f"{ig_user_id}/insights/{metric}/{period}",
+            "title": metric_meta["title"],
+            "description": metric_meta["description"],
+            "id": f"{ig_user_id}/insights/{response_metric}/{period}",
         }
 
-    # week / days_28 / month  → bucket entries
     window_days = {"week": 7, "days_28": 28, "month": 30}[period]
-    sorted_entries = sorted(entries, key=lambda x: x.date)
     buckets: list[dict] = []
+    index = 0
 
-    i = 0
-    while i < len(sorted_entries):
-        bucket_start = sorted_entries[i].date
+    while index < len(metric_entries):
+        bucket_start = metric_entries[index].date
         bucket_end = bucket_start + timedelta(days=window_days)
         bucket_entries = [
-            e for e in sorted_entries[i:]
-            if e.date < bucket_end
+            entry for entry in metric_entries[index:] if entry.date < bucket_end
         ]
-        total = sum(getattr(e, metric) for e in bucket_entries)
-        buckets.append({
-            "value": total,
-            "end_time": bucket_end.strftime("%Y-%m-%dT%H:%M:%S+0000"),
-        })
-        i += len(bucket_entries)
+
+        bucket_value = _coerce_number(
+            sum(entry.metrics[stored_metric] for entry in bucket_entries)
+        )
+        buckets.append(
+            {
+                "value": bucket_value,
+                "end_time": bucket_end.strftime("%Y-%m-%dT%H:%M:%S+0000"),
+            }
+        )
+        index += len(bucket_entries)
 
     return {
-        "name": metric,
+        "name": response_metric,
         "period": period,
         "values": buckets,
-        "title": METRIC_META[metric]["title"],
-        "description": METRIC_META[metric]["description"],
-        "id": f"{ig_user_id}/insights/{metric}/{period}",
+        "title": metric_meta["title"],
+        "description": metric_meta["description"],
+        "id": f"{ig_user_id}/insights/{response_metric}/{period}",
     }
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-# Endpoint 1: GET data (Meta-style)
-# ══════════════════════════════════════════════════════════════════════════════
+async def _import_payloads(
+    ig_user_id: str,
+    payloads: list[tuple[str, bytes]],
+    source: str,
+) -> dict:
+    try:
+        expanded_payloads = expand_csv_payloads(payloads)
+        updates_by_date, processed_files, metric_keys = merge_csv_updates(expanded_payloads)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    if not updates_by_date:
+        raise HTTPException(
+            status_code=400,
+            detail="No valid CSV metric rows were found to import.",
+        )
+
+    created_entries, updated_entries = await upsert_insights(ig_user_id, updates_by_date)
+
+    return {
+        "message": "CSV import completed.",
+        "source": source,
+        "ig_user_id": ig_user_id,
+        "processed_files": processed_files,
+        "touched_dates": len(updates_by_date),
+        "created_entries": created_entries,
+        "updated_entries": updated_entries,
+        "metric_keys": metric_keys,
+    }
+
 
 @router.get("/get_data/{ig_user_id}/insights")
 async def get_insights(
     ig_user_id: str,
     metric: str = Query(
         ...,
-        description="Comma-separated list of metrics (e.g., views,reach,total_interactions)",
+        description="Comma-separated list of metrics (e.g., views,reach,content_interactions)",
     ),
     period: str = Query(
         "day",
@@ -172,104 +212,103 @@ async def get_insights(
         description="End date (ISO-8601 or Unix timestamp)",
     ),
 ):
-    """
-    GET /{ig_user_id}/insights — mirrors Meta Graph API response format.
-
-    Returns a JSON object with a `data` array, each element containing
-    metric name, period, values, title, description, and id.
-    """
-    # Validate period
     if period not in VALID_PERIODS:
         raise HTTPException(
             status_code=400,
-            detail=f"Invalid period '{period}'. Must be one of: {', '.join(VALID_PERIODS)}",
+            detail=f"Invalid period '{period}'. Must be one of: {', '.join(sorted(VALID_PERIODS))}",
         )
 
-    # Parse requested metrics
-    requested_metrics = [m.strip() for m in metric.split(",")]
-    for m in requested_metrics:
-        if m not in METRIC_FIELDS:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Unknown metric '{m}'. Available: {', '.join(METRIC_FIELDS)}",
-            )
+    requested_metrics = [item.strip() for item in metric.split(",") if item.strip()]
+    if not requested_metrics:
+        raise HTTPException(status_code=400, detail="At least one metric is required.")
 
-    # Build the DB query
-    query_filters = {"ig_user_id": ig_user_id}
+    query_filters: dict = {"ig_user_id": ig_user_id}
 
     date_filter: dict = {}
     if since:
-        date_filter["$gte"] = _parse_date(since)
+        try:
+            date_filter["$gte"] = parse_date_value(since)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
     if until:
-        date_filter["$lte"] = _parse_date(until)
+        try:
+            date_filter["$lte"] = parse_date_value(until)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
     if date_filter:
         query_filters["date"] = date_filter
 
-    entries = (
-        await InstagramInsight.find(query_filters)
-        .sort("+date")
-        .to_list()
-    )
-
-    # If no data, return empty data set (Meta behaviour)
+    entries = await InstagramInsight.find(query_filters).sort("+date").to_list()
     if not entries:
         return {"data": []}
 
-    # Build response
     data = []
-    for m in requested_metrics:
-        data.append(_aggregate_for_period(entries, m, period, ig_user_id))
-
-    return {"data": data}
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-# Endpoint 2: Create entry via Gaussian generation
-# ══════════════════════════════════════════════════════════════════════════════
-
-@router.get("/create_entry/{ig_user_id}")
-async def create_entry(
-    ig_user_id: str,
-    date: str = Query(
-        ...,
-        description="ISO date for the new entry (e.g., 2025-04-09)",
-    ),
-):
-    """
-    Generate a new insights entry for the given date using
-    Gaussian sampling from historical data, then return it in
-    Meta-style JSON format.
-    """
-    target_date = _parse_date(date)
-
-    # Check for duplicate
-    existing = await InstagramInsight.find_one(
-        InstagramInsight.ig_user_id == ig_user_id,
-        InstagramInsight.date == target_date,
-    )
-    if existing:
-        raise HTTPException(
-            status_code=409,
-            detail=f"Entry already exists for {ig_user_id} on {date}",
+    for requested_metric in requested_metrics:
+        stored_metric = _normalize_metric_query(requested_metric)
+        data.append(
+            _aggregate_for_period(
+                entries=entries,
+                stored_metric=stored_metric,
+                response_metric=requested_metric,
+                period=period,
+                ig_user_id=ig_user_id,
+            )
         )
 
-    entry = await generate_entry(ig_user_id, target_date)
-
-    # Return in Meta-style format — one metric per data element
-    data = []
-    for m in METRIC_FIELDS:
-        data.append({
-            "name": m,
-            "period": "day",
-            "values": [
-                {
-                    "value": getattr(entry, m),
-                    "end_time": entry.date.strftime("%Y-%m-%dT%H:%M:%S+0000"),
-                }
-            ],
-            "title": METRIC_META[m]["title"],
-            "description": METRIC_META[m]["description"],
-            "id": f"{ig_user_id}/insights/{m}/day",
-        })
-
     return {"data": data}
+
+
+@router.post("/import_data/{ig_user_id}/csvs")
+async def import_csv_uploads(
+    ig_user_id: str,
+    files: Annotated[
+        list[UploadFile],
+        File(
+            ...,
+            description="One or more CSV files, or a ZIP containing CSV files.",
+            json_schema_extra={"items": {"type": "string", "format": "binary"}},
+        ),
+    ],
+):
+    payloads: list[tuple[str, bytes]] = []
+    for uploaded_file in files:
+        file_name = uploaded_file.filename or "uploaded_file"
+        file_content = await uploaded_file.read()
+        if not file_content:
+            continue
+        payloads.append((file_name, file_content))
+
+    if not payloads:
+        raise HTTPException(status_code=400, detail="No non-empty files were uploaded.")
+
+    return await _import_payloads(
+        ig_user_id=ig_user_id,
+        payloads=payloads,
+        source="uploaded_files",
+    )
+
+
+@router.post("/import_data/{ig_user_id}/folder")
+async def import_csv_folder(
+    ig_user_id: str,
+    folder_archive: Annotated[
+        UploadFile,
+        File(
+            ...,
+            description="ZIP file of a folder containing CSV files.",
+            json_schema_extra={"type": "string", "format": "binary"},
+        ),
+    ],
+):
+    archive_name = folder_archive.filename or "folder_upload.zip"
+    archive_bytes = await folder_archive.read()
+    if not archive_bytes:
+        raise HTTPException(status_code=400, detail="Uploaded folder archive is empty.")
+
+    result = await _import_payloads(
+        ig_user_id=ig_user_id,
+        payloads=[(archive_name, archive_bytes)],
+        source="uploaded_folder_zip",
+    )
+    result["archive_name"] = archive_name
+    return result

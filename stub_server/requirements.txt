@@ -1,7 +1,7 @@
 fastapi
 uvicorn[standard]
-motor
-beanie
+pymongo>=4.11,<5
+beanie>=2,<3
 pydantic
 python-dotenv
-apscheduler
+python-multipart

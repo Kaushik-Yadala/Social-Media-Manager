@@ -13,7 +13,6 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.database import init_db
 from app.routers.insights import router as insights_router
-from app.tasks.cron import start_scheduler, stop_scheduler
 
 # Configure logging
 logging.basicConfig(
@@ -26,10 +25,8 @@ logging.basicConfig(
 async def lifespan(app: FastAPI):
     # ── Startup ───────────────────────────────────────────────────────
     client = await init_db()
-    start_scheduler()  # daily cron for auto-generating insights
     yield
     # ── Shutdown ──────────────────────────────────────────────────────
-    stop_scheduler()
     client.close()
 
 
