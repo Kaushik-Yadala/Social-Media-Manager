@@ -11,6 +11,7 @@ from beanie import init_beanie
 
 load_dotenv()  # reads stub_server/.env
 
+from app.models.facebook import FacebookInsight
 from app.models.instagram import InstagramInsight
 
 MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017")
@@ -22,6 +23,6 @@ async def init_db():
     client = AsyncMongoClient(MONGO_URI)
     await init_beanie(
         database=client[DB_NAME],
-        document_models=[InstagramInsight],
+        document_models=[InstagramInsight, FacebookInsight],
     )
     return client

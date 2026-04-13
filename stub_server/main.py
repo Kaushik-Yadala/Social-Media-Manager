@@ -1,5 +1,5 @@
 """
-Stub Server — standalone mock Meta Graph API for Instagram Insights.
+Stub Server — standalone mock Meta Graph API for Instagram/Facebook Insights.
 
 Completely independent of the main backend.
 Run: uvicorn main:app --port 8001 --reload
@@ -12,7 +12,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.database import init_db
-from app.routers.insights import router as insights_router
+from app.routers.insights import facebook_router, instagram_router
 
 # Configure logging
 logging.basicConfig(
@@ -31,9 +31,9 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="Instagram Insights Stub Server",
+    title="Instagram/Facebook Insights Stub Server",
     description=(
-        "A black-box mock of the Meta Graph API for Instagram Media Insights. "
+        "A black-box mock of the Meta Graph API for Instagram and Facebook insights. "
         "Returns responses in Meta's exact JSON format."
     ),
     version="1.0.0",
@@ -50,14 +50,15 @@ app.add_middleware(
 )
 
 # ── Routers ──────────────────────────────────────────────────────────────────
-app.include_router(insights_router)
+app.include_router(instagram_router)
+app.include_router(facebook_router)
 
 
 # ── Health check ─────────────────────────────────────────────────────────────
 
 @app.get("/", tags=["Root"])
 def root():
-    return {"message": "Instagram Insights Stub Server is running."}
+    return {"message": "Instagram/Facebook Insights Stub Server is running."}
 
 
 @app.get("/health", tags=["Root"])

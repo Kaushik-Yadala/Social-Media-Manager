@@ -1,5 +1,5 @@
 """
-CSV ingestion helpers for Instagram insights data.
+CSV ingestion helpers for social insights data.
 """
 
 import csv
@@ -8,6 +8,8 @@ import zipfile
 from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
+
+from beanie import Document
 
 from app.models.instagram import InstagramInsight
 
@@ -287,8 +289,11 @@ def merge_csv_updates(
     return merged_updates, len(csv_payloads), sorted(discovered_metrics)
 
 
-async def upsert_insights(
-    ig_user_id: str,
+async def upsert_platform_insights(
+    document_model: type[Document],
+    account_field: str,
+    account_id: str,
+    platform: str,
     updates_by_date: dict[datetime, dict[str, int | float]],
 ) -> tuple[int, int]:
     if not updates_by_date:
@@ -297,9 +302,9 @@ async def upsert_insights(
     dates = sorted(updates_by_date.keys())
     min_date = dates[0]
     max_date = dates[-1]
-    existing_entries = await InstagramInsight.find(
+    existing_entries = await document_model.find(
         {
-            "ig_user_id": ig_user_id,
+            account_field: account_id,
             "date": {"$gte": min_date, "$lte": max_date},
         }
     ).to_list()
@@ -314,16 +319,33 @@ async def upsert_insights(
 
         if existing_entry:
             existing_entry.metrics.update(metric_updates)
+            existing_entry.platform = platform
             await existing_entry.save()
             updated_entries += 1
             continue
 
-        new_entry = InstagramInsight(
-            ig_user_id=ig_user_id,
-            date=date_key,
-            metrics=metric_updates,
+        new_entry = document_model(
+            **{
+                account_field: account_id,
+                "platform": platform,
+                "date": date_key,
+                "metrics": metric_updates,
+            }
         )
         await new_entry.insert()
         created_entries += 1
 
     return created_entries, updated_entries
+
+
+async def upsert_insights(
+    ig_user_id: str,
+    updates_by_date: dict[datetime, dict[str, int | float]],
+) -> tuple[int, int]:
+    return await upsert_platform_insights(
+        document_model=InstagramInsight,
+        account_field="ig_user_id",
+        account_id=ig_user_id,
+        platform="instagram",
+        updates_by_date=updates_by_date,
+    )

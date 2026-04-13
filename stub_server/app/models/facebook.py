@@ -1,38 +1,38 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import Field
 from beanie import Document
+from pydantic import Field
 
 
-class InstagramInsight(Document):
+class FacebookInsight(Document):
     """
-    Represents a single day's worth of Instagram account-level insights.
-    Each document is one row of daily metrics for a given ig_user_id.
+    Represents a single day's worth of Facebook page-level insights.
+    Each document is one row of daily metrics for a given fb_user_id.
     """
 
-    platform: Literal["instagram"] = Field(
-        default="instagram",
+    platform: Literal["facebook"] = Field(
+        default="facebook",
         description="Social platform this document belongs to.",
     )
 
-    # Which simulated Instagram account this data belongs to
-    ig_user_id: str = Field(..., description="The Instagram user/account ID")
+    # Which simulated Facebook account/page this data belongs to
+    fb_user_id: str = Field(..., description="The Facebook page/account ID")
 
     # The date the metrics were recorded (stored as midnight UTC)
     date: datetime = Field(..., description="Date these metrics were recorded")
 
     # Dynamic metric map keyed by normalized CSV metric/column names.
-    # Examples: views, reach, content_interactions, instagram_link_clicks
+    # Examples: views, viewers, facebook_visits, content_interactions
     metrics: dict[str, int | float] = Field(
         default_factory=dict,
         description="Metric values keyed by normalized metric names",
     )
 
     class Settings:
-        name = "instagram_insights_data"
+        name = "facebook_insights_data"
         indexes = [
             "platform",
-            "ig_user_id",
+            "fb_user_id",
             "date",
         ]
