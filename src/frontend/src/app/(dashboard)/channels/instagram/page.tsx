@@ -196,6 +196,7 @@ interface DashboardWidgetConfig {
     xMetricKey?: string;
     yMetricKey?: string;
     postMetricKey?: PostMetricKey;
+    postType?: string;
 }
 
 interface DashboardWidgetInstance {
@@ -216,6 +217,7 @@ const POST_WIDGET_KINDS = new Set<WidgetKind>([
     'post-reach-vs-views',
     'post-metric-trend',
 ]);
+const AGGREGATE_POST_TYPE = 'all';
 
 type PostTimeFilter =
     | 'all'
@@ -343,6 +345,11 @@ function normalizePostMetricKey(value: string | undefined, fallback: PostMetricK
     return fallback;
 }
 
+function normalizeWidgetPostType(value: string | undefined, availablePostTypes: string[]): string {
+    if (!value || !availablePostTypes.includes(value)) return AGGREGATE_POST_TYPE;
+    return value;
+}
+
 function createWidgetInstance(widgetId: string, config: DashboardWidgetConfig = {}): DashboardWidgetInstance {
     return {
         instanceId: buildWidgetInstanceId(widgetId),
@@ -377,6 +384,7 @@ function toLayoutWidget(instance: DashboardWidgetInstance): InstagramDashboardLa
     if (typeof instance.config.xMetricKey === 'string') config.xMetricKey = instance.config.xMetricKey;
     if (typeof instance.config.yMetricKey === 'string') config.yMetricKey = instance.config.yMetricKey;
     if (typeof instance.config.postMetricKey === 'string') config.postMetricKey = instance.config.postMetricKey;
+    if (typeof instance.config.postType === 'string') config.postType = instance.config.postType;
 
     return {
         instance_id: instance.instanceId,
@@ -399,6 +407,9 @@ function fromLayoutWidget(widget: InstagramDashboardLayoutWidget): DashboardWidg
         if (typeof metricsConfig.yMetricKey === 'string') config.yMetricKey = metricsConfig.yMetricKey;
         if (typeof metricsConfig.postMetricKey === 'string') {
             config.postMetricKey = normalizePostMetricKey(metricsConfig.postMetricKey);
+        }
+        if (typeof metricsConfig.postType === 'string') {
+            config.postType = metricsConfig.postType;
         }
     }
 
@@ -1021,6 +1032,13 @@ export default function InstagramPage() {
                 .map((series) => ({ value: series.key, label: series.label })),
         [metricSeries],
     );
+    const widgetPostTypeOptions = useMemo(
+        () => [
+            AGGREGATE_POST_TYPE,
+            ...Array.from(new Set(postsForDisplay.map((post) => normalizePostTypeLabel(post.postType)))),
+        ],
+        [postsForDisplay],
+    );
 
     const getDefaultWidgetConfig = useCallback(
         (widget: DashboardWidget): DashboardWidgetConfig => {
@@ -1042,6 +1060,7 @@ export default function InstagramPage() {
             if (widget.kind === 'top-posts' || widget.kind === 'post-metric-trend') {
                 return {
                     postMetricKey: postGrowthMetricKey,
+                    postType: AGGREGATE_POST_TYPE,
                 };
             }
 
@@ -1073,12 +1092,13 @@ export default function InstagramPage() {
             if (widget.kind === 'top-posts' || widget.kind === 'post-metric-trend') {
                 return {
                     postMetricKey: normalizePostMetricKey(config.postMetricKey, postGrowthMetricKey),
+                    postType: normalizeWidgetPostType(config.postType, widgetPostTypeOptions),
                 };
             }
 
             return {};
         },
-        [channelMetricOptions, postGrowthMetricKey],
+        [channelMetricOptions, postGrowthMetricKey, widgetPostTypeOptions],
     );
 
     useEffect(() => {
@@ -1676,33 +1696,63 @@ export default function InstagramPage() {
             const selectedMetricLabel =
                 POST_TYPE_GROWTH_METRIC_OPTIONS.find((option) => option.value === selectedMetricKey)?.label ||
                 formatMetricLabel(selectedMetricKey);
-            const rankedPosts = rankPostsByMetric(postsForDisplay, selectedMetricKey);
+            const selectedPostType = normalizeWidgetPostType(widgetInstance.config.postType, widgetPostTypeOptions);
+            const selectedPostTypeLabel =
+                selectedPostType === AGGREGATE_POST_TYPE ? 'All post types (Aggregate)' : selectedPostType;
+            const postsForWidget =
+                selectedPostType === AGGREGATE_POST_TYPE
+                    ? postsForDisplay
+                    : postsForDisplay.filter((post) => normalizePostTypeLabel(post.postType) === selectedPostType);
+            const rankedPosts = rankPostsByMetric(postsForWidget, selectedMetricKey);
 
             if (rankedPosts.length === 0) {
-                return <p className="text-xs text-stone-400">No post ranking data available.</p>;
+                return <p className="text-xs text-stone-400">No post ranking data available for {selectedPostTypeLabel.toLowerCase()}.</p>;
             }
 
             return (
                 <div className="space-y-2">
-                    <Select
-                        value={selectedMetricKey}
-                        onValueChange={(value) =>
-                            updateWidgetConfig(widgetInstance.instanceId, {
-                                postMetricKey: value as PostMetricKey,
-                            })
-                        }
-                    >
-                        <SelectTrigger className="h-8 w-[180px] text-xs">
-                            <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                            {POST_TYPE_GROWTH_METRIC_OPTIONS.map((option) => (
-                                <SelectItem key={option.value} value={option.value}>
-                                    {option.label}
-                                </SelectItem>
-                            ))}
-                        </SelectContent>
-                    </Select>
+                    <div className="flex flex-wrap items-center gap-2">
+                        <Select
+                            value={selectedMetricKey}
+                            onValueChange={(value) =>
+                                updateWidgetConfig(widgetInstance.instanceId, {
+                                    postMetricKey: value as PostMetricKey,
+                                })
+                            }
+                        >
+                            <SelectTrigger className="h-8 w-[180px] text-xs">
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {POST_TYPE_GROWTH_METRIC_OPTIONS.map((option) => (
+                                    <SelectItem key={option.value} value={option.value}>
+                                        {option.label}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                        <Select
+                            value={selectedPostType}
+                            onValueChange={(value) =>
+                                updateWidgetConfig(widgetInstance.instanceId, {
+                                    postType: value,
+                                })
+                            }
+                        >
+                            <SelectTrigger className="h-8 w-[220px] text-xs">
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {widgetPostTypeOptions.map((postTypeOption) => (
+                                    <SelectItem key={postTypeOption} value={postTypeOption}>
+                                        {postTypeOption === AGGREGATE_POST_TYPE
+                                            ? 'All post types (Aggregate)'
+                                            : postTypeOption}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    </div>
 
                     {rankedPosts.slice(0, 6).map((post) => (
                         <button
@@ -1734,37 +1784,68 @@ export default function InstagramPage() {
             const selectedMetricLabel =
                 POST_TYPE_GROWTH_METRIC_OPTIONS.find((option) => option.value === selectedMetricKey)?.label ||
                 formatMetricLabel(selectedMetricKey);
-            const trendData = buildPostMetricTrendData(postsForDisplay, selectedMetricKey);
+            const selectedPostType = normalizeWidgetPostType(widgetInstance.config.postType, widgetPostTypeOptions);
+            const selectedPostTypeLabel =
+                selectedPostType === AGGREGATE_POST_TYPE ? 'All post types (Aggregate)' : selectedPostType;
+            const postsForWidget =
+                selectedPostType === AGGREGATE_POST_TYPE
+                    ? postsForDisplay
+                    : postsForDisplay.filter((post) => normalizePostTypeLabel(post.postType) === selectedPostType);
+            const trendData = buildPostMetricTrendData(postsForWidget, selectedMetricKey);
 
             if (trendData.length === 0) {
                 return (
                     <p className="text-xs text-stone-400">
-                        No publish-time trend data available for {selectedMetricLabel.toLowerCase()}.
+                        No publish-time trend data available for {selectedMetricLabel.toLowerCase()} in{' '}
+                        {selectedPostTypeLabel.toLowerCase()}.
                     </p>
                 );
             }
 
             return (
                 <div className="space-y-2">
-                    <Select
-                        value={selectedMetricKey}
-                        onValueChange={(value) =>
-                            updateWidgetConfig(widgetInstance.instanceId, {
-                                postMetricKey: value as PostMetricKey,
-                            })
-                        }
-                    >
-                        <SelectTrigger className="h-8 w-[180px] text-xs">
-                            <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                            {POST_TYPE_GROWTH_METRIC_OPTIONS.map((option) => (
-                                <SelectItem key={option.value} value={option.value}>
-                                    {option.label}
-                                </SelectItem>
-                            ))}
-                        </SelectContent>
-                    </Select>
+                    <div className="flex flex-wrap items-center gap-2">
+                        <Select
+                            value={selectedMetricKey}
+                            onValueChange={(value) =>
+                                updateWidgetConfig(widgetInstance.instanceId, {
+                                    postMetricKey: value as PostMetricKey,
+                                })
+                            }
+                        >
+                            <SelectTrigger className="h-8 w-[180px] text-xs">
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {POST_TYPE_GROWTH_METRIC_OPTIONS.map((option) => (
+                                    <SelectItem key={option.value} value={option.value}>
+                                        {option.label}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                        <Select
+                            value={selectedPostType}
+                            onValueChange={(value) =>
+                                updateWidgetConfig(widgetInstance.instanceId, {
+                                    postType: value,
+                                })
+                            }
+                        >
+                            <SelectTrigger className="h-8 w-[220px] text-xs">
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {widgetPostTypeOptions.map((postTypeOption) => (
+                                    <SelectItem key={postTypeOption} value={postTypeOption}>
+                                        {postTypeOption === AGGREGATE_POST_TYPE
+                                            ? 'All post types (Aggregate)'
+                                            : postTypeOption}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    </div>
                     <div className="h-[220px]">
                         <ResponsiveContainer width="100%" height="100%">
                             <LineChart data={trendData}>
