@@ -145,15 +145,15 @@ export default function ManualUploadPage() {
     }, [accountId, instagramScope, platform, uploadMode]);
 
     const selectedFileLabel = isInstagramPosts
-        ? 'Post CSV file'
+        ? 'Post CSV file(s)'
         : uploadMode === 'csv'
           ? 'CSV file(s)'
           : 'ZIP archive';
     const accept =
         isInstagramPosts || uploadMode === 'csv' ? '.csv,text/csv' : '.zip,application/zip';
-    const allowsMultipleSelection = uploadMode === 'csv' && !isInstagramPosts;
+    const allowsMultipleSelection = uploadMode === 'csv';
     const uploadDescription = isInstagramPosts
-        ? 'Upload a single posts.csv file to update Instagram post-wise insights in the database.'
+        ? 'Upload one or more post-level CSV files to update Instagram post-wise insights in the database.'
         : 'Choose platform, file type, and account ID. Then drag files into the upload zone.';
     const successStats = success ? getSuccessStats(success) : [];
 
@@ -201,20 +201,13 @@ export default function ManualUploadPage() {
         if (isInstagramPosts) {
             const invalidCsv = selected.filter((file) => !isCsvFile(file));
             if (invalidCsv.length > 0) {
-                setErrorMessage('Post-wise mode only accepts one .csv file.');
+                setErrorMessage('Post-wise mode accepts only .csv files.');
                 setFiles([]);
                 clearNativeFileInput();
                 return;
             }
 
-            if (selected.length !== 1) {
-                setErrorMessage('Post-wise mode requires exactly one .csv file.');
-                setFiles([]);
-                clearNativeFileInput();
-                return;
-            }
-
-            setFiles([selected[0]]);
+            setFiles(selected);
             setErrorMessage(null);
             setSuccess(null);
             return;
@@ -281,8 +274,8 @@ export default function ManualUploadPage() {
             return;
         }
 
-        if (isInstagramPosts && files.length !== 1) {
-            setErrorMessage('Post-wise mode requires exactly one .csv file.');
+        if (isInstagramPosts && files.some((file) => !isCsvFile(file))) {
+            setErrorMessage('Post-wise mode accepts only .csv files.');
             return;
         }
 
@@ -385,7 +378,7 @@ export default function ManualUploadPage() {
                                 </Tabs>
                                 <p className={cn('text-xs', theme.infoClass)}>
                                     {instagramScope === 'posts'
-                                        ? 'Post-wise upload accepts one posts.csv file and updates /manual/insta/posts/{ig_user_id}/csvs.'
+                                        ? 'Post-wise upload accepts one or more CSV files and updates /manual/insta/posts/{ig_user_id}/csvs.'
                                         : 'Channelwise upload supports CSV files or a ZIP folder archive.'}
                                 </p>
                             </div>
@@ -471,7 +464,7 @@ export default function ManualUploadPage() {
                                 <p className="mt-4 text-lg font-semibold text-stone-900">
                                     Drag and drop{' '}
                                     {isInstagramPosts
-                                        ? 'a post CSV file'
+                                        ? 'post CSV files'
                                         : uploadMode === 'csv'
                                           ? 'CSV files'
                                           : 'a ZIP archive'}{' '}
@@ -491,11 +484,11 @@ export default function ManualUploadPage() {
                                 >
                                     <UploadCloud className="h-4 w-4" />
                                     Choose file
-                                    {isInstagramPosts ? '' : uploadMode === 'csv' ? 's' : ''}
+                                    {uploadMode === 'csv' ? 's' : ''}
                                 </Button>
                                 <p className={cn('mt-4 text-xs', theme.infoClass)}>
                                     {isInstagramPosts
-                                        ? 'Supports exactly one .csv file (for example posts.csv)'
+                                        ? 'Supports one or more .csv files'
                                         : uploadMode === 'csv'
                                           ? 'Supports one or more .csv files'
                                           : 'Supports one .zip file containing CSV files'}

@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
     BarChart3,
     Bookmark,
@@ -8,6 +8,7 @@ import {
     ExternalLink,
     Eye,
     Grid3X3,
+    GripVertical,
     Heart,
     Instagram,
     List,
@@ -20,7 +21,8 @@ import {
     Users,
     X,
 } from 'lucide-react';
-import { PieChart, Pie, Cell } from 'recharts';
+import Link from 'next/link';
+import { PieChart, Pie, Cell, ScatterChart, Scatter } from 'recharts';
 import { DayPicker, DateRange } from 'react-day-picker';
 
 import { Badge } from '@/components/ui/badge';
@@ -39,7 +41,6 @@ import {
     Bar,
     BarChart,
     CartesianGrid,
-    Legend,
     Line,
     LineChart,
     ResponsiveContainer,
@@ -47,6 +48,12 @@ import {
     XAxis,
     YAxis,
 } from '@/components/charts/ChartComponents';
+import { useAuth } from '@/lib/auth-context';
+import {
+    fetchInstagramDashboardLayout,
+    saveInstagramDashboardLayout,
+    type InstagramDashboardLayoutWidget,
+} from '@/lib/api/manual-insights-api';
 import { cn } from '@/lib/utils';
 
 const API_BASE =
@@ -97,6 +104,8 @@ const POST_TYPE_GROWTH_METRIC_OPTIONS = [
     { value: 'saved', label: 'Saved' },
     { value: 'follows', label: 'Follows' },
 ] as const;
+type PostMetricKey = (typeof POST_TYPE_GROWTH_METRIC_OPTIONS)[number]['value'];
+const POST_METRIC_KEYS = new Set<PostMetricKey>(POST_TYPE_GROWTH_METRIC_OPTIONS.map((option) => option.value));
 
 interface ManualInsightValue {
     value: number | string;
@@ -166,10 +175,13 @@ interface InstagramPostRecord {
 type WidgetKind =
     | 'channel-overview'
     | 'metric-line'
+    | 'dynamic-metric-line'
+    | 'metric-scatter-compare'
     | 'post-type-distribution'
     | 'top-posts'
     | 'post-engagement'
-    | 'post-reach-vs-views';
+    | 'post-reach-vs-views'
+    | 'post-metric-trend';
 
 interface DashboardWidget {
     id: string;
@@ -178,6 +190,32 @@ interface DashboardWidget {
     kind: WidgetKind;
     metricKey?: string;
 }
+
+interface DashboardWidgetConfig {
+    metricKey?: string;
+    xMetricKey?: string;
+    yMetricKey?: string;
+    postMetricKey?: PostMetricKey;
+}
+
+interface DashboardWidgetInstance {
+    instanceId: string;
+    widgetId: string;
+    config: DashboardWidgetConfig;
+}
+
+interface ActiveDashboardWidget {
+    template: DashboardWidget;
+    instance: DashboardWidgetInstance;
+}
+
+const POST_WIDGET_KINDS = new Set<WidgetKind>([
+    'post-type-distribution',
+    'top-posts',
+    'post-engagement',
+    'post-reach-vs-views',
+    'post-metric-trend',
+]);
 
 type PostTimeFilter =
     | 'all'
@@ -192,18 +230,6 @@ interface DateRangeBounds {
     endMs: number;
     startDate: Date;
     endDate: Date;
-}
-
-interface PostTypeAggregate {
-    type: string;
-    count: number;
-    totals: Record<string, number>;
-}
-
-interface TopPostTypeMetric {
-    type: string;
-    value: number;
-    count: number;
 }
 
 function stringifyDetail(detail: unknown): string {
@@ -289,6 +315,131 @@ function deriveTotalInteractions(metrics: Record<string, number>): number {
     const shares = metrics.shares || 0;
     const saved = metrics.saved || 0;
     return likes + comments + shares + saved;
+}
+
+function getPostMetricValue(post: InstagramPostRecord, metricKey: PostMetricKey): number {
+    if (metricKey === 'total_interactions') {
+        return typeof post.metrics.total_interactions === 'number'
+            ? post.metrics.total_interactions
+            : deriveTotalInteractions(post.metrics);
+    }
+    return post.metrics[metricKey] || 0;
+}
+
+function rankPostsByMetric(posts: InstagramPostRecord[], metricKey: PostMetricKey, limit = 8): InstagramPostRecord[] {
+    return [...posts]
+        .sort((a, b) => getPostMetricValue(b, metricKey) - getPostMetricValue(a, metricKey))
+        .slice(0, limit);
+}
+
+function buildWidgetInstanceId(widgetId: string): string {
+    const randomSuffix = Math.random().toString(36).slice(2, 8);
+    return `${widgetId}-${Date.now()}-${randomSuffix}`;
+}
+
+function normalizePostMetricKey(value: string | undefined, fallback: PostMetricKey = 'total_interactions'): PostMetricKey {
+    if (!value) return fallback;
+    if (POST_METRIC_KEYS.has(value as PostMetricKey)) return value as PostMetricKey;
+    return fallback;
+}
+
+function createWidgetInstance(widgetId: string, config: DashboardWidgetConfig = {}): DashboardWidgetInstance {
+    return {
+        instanceId: buildWidgetInstanceId(widgetId),
+        widgetId,
+        config,
+    };
+}
+
+function applyWidgetConfigPatch(
+    instances: DashboardWidgetInstance[],
+    instanceId: string,
+    patch: Partial<DashboardWidgetConfig>,
+): DashboardWidgetInstance[] {
+    let didPatch = false;
+    const nextInstances = instances.map((instance) => {
+        if (instance.instanceId !== instanceId) return instance;
+        didPatch = true;
+        return {
+            ...instance,
+            config: {
+                ...instance.config,
+                ...patch,
+            },
+        };
+    });
+    return didPatch ? nextInstances : instances;
+}
+
+function toLayoutWidget(instance: DashboardWidgetInstance): InstagramDashboardLayoutWidget {
+    const config: Record<string, string | number | boolean | null> = {};
+    if (typeof instance.config.metricKey === 'string') config.metricKey = instance.config.metricKey;
+    if (typeof instance.config.xMetricKey === 'string') config.xMetricKey = instance.config.xMetricKey;
+    if (typeof instance.config.yMetricKey === 'string') config.yMetricKey = instance.config.yMetricKey;
+    if (typeof instance.config.postMetricKey === 'string') config.postMetricKey = instance.config.postMetricKey;
+
+    return {
+        instance_id: instance.instanceId,
+        widget_id: instance.widgetId,
+        config,
+    };
+}
+
+function fromLayoutWidget(widget: InstagramDashboardLayoutWidget): DashboardWidgetInstance | null {
+    const widgetId = typeof widget.widget_id === 'string' ? widget.widget_id.trim() : '';
+    const instanceId = typeof widget.instance_id === 'string' ? widget.instance_id.trim() : '';
+    if (!widgetId || !instanceId) return null;
+
+    const rawConfig = widget.config;
+    const config: DashboardWidgetConfig = {};
+    if (rawConfig && typeof rawConfig === 'object') {
+        const metricsConfig = rawConfig as Record<string, unknown>;
+        if (typeof metricsConfig.metricKey === 'string') config.metricKey = metricsConfig.metricKey;
+        if (typeof metricsConfig.xMetricKey === 'string') config.xMetricKey = metricsConfig.xMetricKey;
+        if (typeof metricsConfig.yMetricKey === 'string') config.yMetricKey = metricsConfig.yMetricKey;
+        if (typeof metricsConfig.postMetricKey === 'string') {
+            config.postMetricKey = normalizePostMetricKey(metricsConfig.postMetricKey);
+        }
+    }
+
+    return {
+        instanceId,
+        widgetId,
+        config,
+    };
+}
+
+function buildPostMetricTrendData(posts: InstagramPostRecord[], metricKey: PostMetricKey) {
+    const byDate = new Map<
+        string,
+        {
+            value: number;
+            sortValue: number;
+            dateLabel: string;
+        }
+    >();
+
+    for (const post of posts) {
+        if (!post.publishTime) continue;
+        const publishDate = parseDate(post.publishTime);
+        if (!publishDate) continue;
+
+        const dateKey = publishDate.toISOString().slice(0, 10);
+        const existing = byDate.get(dateKey) || {
+            value: 0,
+            sortValue: publishDate.getTime(),
+            dateLabel: formatDateWithYear(publishDate),
+        };
+        existing.value += getPostMetricValue(post, metricKey);
+        byDate.set(dateKey, existing);
+    }
+
+    return Array.from(byDate.values())
+        .sort((a, b) => a.sortValue - b.sortValue)
+        .map((row) => ({
+            date: row.dateLabel,
+            value: Math.round(row.value),
+        }));
 }
 
 async function fetchJson<T>(path: string): Promise<T> {
@@ -415,9 +566,25 @@ function buildWidgetCatalog(series: MetricSeries[], posts: InstagramPostRecord[]
         widgets.push({
             id: 'channel-overview',
             title: 'Channel Metrics Overview',
-            description: 'Total values by available channelwise metrics from MongoDB.',
+            description: 'Total values by available channel metrics.',
             kind: 'channel-overview',
         });
+
+        widgets.push({
+            id: 'dynamic-metric-line',
+            title: 'Custom Metric Trend',
+            description: 'Pick any channel metric and view its trend over time.',
+            kind: 'dynamic-metric-line',
+        });
+
+        if (metricSeriesWithData.length > 1) {
+            widgets.push({
+                id: 'metric-scatter-compare',
+                title: 'Metric X vs Y Comparison',
+                description: 'Choose two metrics and compare their relationship on X and Y axes.',
+                kind: 'metric-scatter-compare',
+            });
+        }
     }
 
     for (const metricSeries of metricSeriesWithData) {
@@ -440,9 +607,16 @@ function buildWidgetCatalog(series: MetricSeries[], posts: InstagramPostRecord[]
 
         widgets.push({
             id: 'top-posts',
-            title: 'Top Posts by Interactions',
-            description: 'Posts ranked by total interactions.',
+            title: 'Top Posts',
+            description: 'Posts ranked by selected metric.',
             kind: 'top-posts',
+        });
+
+        widgets.push({
+            id: 'post-metric-trend',
+            title: 'Post Metric Over Time',
+            description: 'Pick a post metric and track how it changes over publish dates.',
+            kind: 'post-metric-trend',
         });
 
         const hasEngagementBreakdown = posts.some(
@@ -567,23 +741,6 @@ function derivePostTitle(description: string | null, postId: string): string {
     return titleCandidate.trim();
 }
 
-function getTopPostTypeByMetric(
-    aggregates: PostTypeAggregate[],
-    metricKey: string,
-): TopPostTypeMetric | null {
-    if (aggregates.length === 0) return null;
-
-    let winner: TopPostTypeMetric | null = null;
-    for (const aggregate of aggregates) {
-        const value = aggregate.totals[metricKey] || 0;
-        if (!winner || value > winner.value) {
-            winner = { type: aggregate.type, value, count: aggregate.count };
-        }
-    }
-
-    return winner;
-}
-
 function normalizeFuzzyText(value: string): string {
     return value.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
 }
@@ -677,6 +834,7 @@ function isPostWithinTimeRange(post: InstagramPostRecord, timeFilter: PostTimeFi
 }
 
 export default function InstagramPage() {
+    const { user } = useAuth();
     const [isLoading, setIsLoading] = useState(true);
     const [errorMessage, setErrorMessage] = useState<string | null>(null);
     const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
@@ -686,20 +844,29 @@ export default function InstagramPage() {
 
     const [view, setView] = useState<'dashboard' | 'posts'>('dashboard');
     const [widgetSheetOpen, setWidgetSheetOpen] = useState(false);
-    const [activeWidgetIds, setActiveWidgetIds] = useState<string[]>([]);
+    const [activeWidgetInstances, setActiveWidgetInstances] = useState<DashboardWidgetInstance[]>([]);
+    const [persistedWidgetInstances, setPersistedWidgetInstances] = useState<DashboardWidgetInstance[] | null>(null);
+    const [isLayoutLoading, setIsLayoutLoading] = useState(true);
+    const [isLayoutInitialized, setIsLayoutInitialized] = useState(false);
+    const [dragOverId, setDragOverId] = useState<string | null>(null);
+    const dragItemRef = useRef<string | null>(null);
+    const [postWidgetSheetOpen, setPostWidgetSheetOpen] = useState(false);
+    const [activePostWidgetInstances, setActivePostWidgetInstances] = useState<DashboardWidgetInstance[]>([]);
+    const [postWidgetDragOverId, setPostWidgetDragOverId] = useState<string | null>(null);
+    const postWidgetDragItemRef = useRef<string | null>(null);
     const [selectedCalendarRange, setSelectedCalendarRange] = useState<DateRange | undefined>();
 
-    const [postsMode, setPostsMode] = useState<'individual' | 'analytics'>('individual');
+    const [postsMode, setPostsMode] = useState<'individual' | 'analytics'>('analytics');
     const [searchQ, setSearchQ] = useState('');
     const [typeFilter, setTypeFilter] = useState('all');
     const [timeFilter, setTimeFilter] = useState<PostTimeFilter>('all');
     const [sortBy, setSortBy] = useState<'publish_time' | 'total_interactions' | 'views' | 'reach'>(
         'publish_time',
     );
-    const [postGrowthMetricKey, setPostGrowthMetricKey] =
-        useState<(typeof POST_TYPE_GROWTH_METRIC_OPTIONS)[number]['value']>('total_interactions');
+    const postGrowthMetricKey: PostMetricKey = 'total_interactions';
     const [postView, setPostView] = useState<'grid' | 'list'>('grid');
     const [selectedPost, setSelectedPost] = useState<InstagramPostRecord | null>(null);
+    const dashboardLayoutUserId = user?.id || INSTAGRAM_USER_ID;
 
     const loadDashboardData = useCallback(async () => {
         setIsLoading(true);
@@ -736,13 +903,43 @@ export default function InstagramPage() {
         void loadDashboardData();
     }, [loadDashboardData]);
 
+    useEffect(() => {
+        let cancelled = false;
+        setIsLayoutLoading(true);
+        setIsLayoutInitialized(false);
+        setActiveWidgetInstances([]);
+        setPersistedWidgetInstances(null);
+
+        const loadLayout = async () => {
+            try {
+                const payload = await fetchInstagramDashboardLayout(INSTAGRAM_USER_ID, dashboardLayoutUserId);
+                if (cancelled) return;
+
+                const persistedWidgets = Array.isArray(payload.active_widgets)
+                    ? payload.active_widgets.map(fromLayoutWidget).filter((widget): widget is DashboardWidgetInstance => widget !== null)
+                    : [];
+                setPersistedWidgetInstances(persistedWidgets);
+            } catch {
+                if (!cancelled) {
+                    setPersistedWidgetInstances([]);
+                }
+            } finally {
+                if (!cancelled) setIsLayoutLoading(false);
+            }
+        };
+
+        void loadLayout();
+        return () => {
+            cancelled = true;
+        };
+    }, [dashboardLayoutUserId]);
+
     const allSeriesByKey = useMemo(() => {
         const map = new Map<string, MetricSeries>();
         metricSeries.forEach((series) => map.set(series.key, series));
         return map;
     }, [metricSeries]);
 
-    const isDateRangePending = Boolean(selectedCalendarRange?.from && !selectedCalendarRange?.to);
     const selectedDateRange = useMemo<DateRangeBounds | null>(() => {
         if (!selectedCalendarRange?.from || !selectedCalendarRange.to) return null;
         return {
@@ -813,18 +1010,155 @@ export default function InstagramPage() {
     }, [postsForDisplay]);
 
     const widgetCatalog = useMemo(
-        () => buildWidgetCatalog(seriesForDisplay, postsForDisplay),
-        [seriesForDisplay, postsForDisplay],
+        () => buildWidgetCatalog(metricSeries, posts),
+        [metricSeries, posts],
+    );
+
+    const channelMetricOptions = useMemo(
+        () =>
+            metricSeries
+                .filter((series) => series.points.length > 0)
+                .map((series) => ({ value: series.key, label: series.label })),
+        [metricSeries],
+    );
+
+    const getDefaultWidgetConfig = useCallback(
+        (widget: DashboardWidget): DashboardWidgetConfig => {
+            if (widget.kind === 'dynamic-metric-line') {
+                return {
+                    metricKey: channelMetricOptions[0]?.value,
+                };
+            }
+
+            if (widget.kind === 'metric-scatter-compare') {
+                const xMetricKey = channelMetricOptions[0]?.value;
+                const yMetricKey = channelMetricOptions.find((option) => option.value !== xMetricKey)?.value || xMetricKey;
+                return {
+                    xMetricKey,
+                    yMetricKey,
+                };
+            }
+
+            if (widget.kind === 'top-posts' || widget.kind === 'post-metric-trend') {
+                return {
+                    postMetricKey: postGrowthMetricKey,
+                };
+            }
+
+            return {};
+        },
+        [channelMetricOptions, postGrowthMetricKey],
+    );
+
+    const normalizeWidgetConfig = useCallback(
+        (widget: DashboardWidget, config: DashboardWidgetConfig): DashboardWidgetConfig => {
+            const metricKeys = channelMetricOptions.map((option) => option.value);
+
+            if (widget.kind === 'dynamic-metric-line') {
+                const metricKey = metricKeys.includes(config.metricKey || '')
+                    ? config.metricKey
+                    : channelMetricOptions[0]?.value;
+                return { metricKey };
+            }
+
+            if (widget.kind === 'metric-scatter-compare') {
+                const defaultXMetricKey = channelMetricOptions[0]?.value;
+                const xMetricKey = metricKeys.includes(config.xMetricKey || '') ? config.xMetricKey : defaultXMetricKey;
+                const defaultYMetricKey =
+                    channelMetricOptions.find((option) => option.value !== xMetricKey)?.value || xMetricKey;
+                const yMetricKey = metricKeys.includes(config.yMetricKey || '') ? config.yMetricKey : defaultYMetricKey;
+                return { xMetricKey, yMetricKey };
+            }
+
+            if (widget.kind === 'top-posts' || widget.kind === 'post-metric-trend') {
+                return {
+                    postMetricKey: normalizePostMetricKey(config.postMetricKey, postGrowthMetricKey),
+                };
+            }
+
+            return {};
+        },
+        [channelMetricOptions, postGrowthMetricKey],
     );
 
     useEffect(() => {
+        if (isLayoutLoading || isLayoutInitialized) return;
+        if (isLoading && widgetCatalog.length === 0) return;
+
+        const widgetMap = new Map(widgetCatalog.map((widget) => [widget.id, widget]));
+        const persistedInstances = (persistedWidgetInstances || [])
+            .map((instance) => {
+                const template = widgetMap.get(instance.widgetId);
+                if (!template) return null;
+                return {
+                    ...instance,
+                    config: normalizeWidgetConfig(template, instance.config),
+                } satisfies DashboardWidgetInstance;
+            })
+            .filter((instance): instance is DashboardWidgetInstance => instance !== null);
+
+        if (persistedInstances.length > 0) {
+            setActiveWidgetInstances(persistedInstances);
+        } else {
+            const initialInstances = widgetCatalog
+                .slice(0, 6)
+                .map((widget) => createWidgetInstance(widget.id, getDefaultWidgetConfig(widget)));
+            setActiveWidgetInstances(initialInstances);
+        }
+
+        setIsLayoutInitialized(true);
+    }, [
+        widgetCatalog,
+        isLayoutLoading,
+        isLayoutInitialized,
+        isLoading,
+        persistedWidgetInstances,
+        normalizeWidgetConfig,
+        getDefaultWidgetConfig,
+    ]);
+
+    useEffect(() => {
+        if (!isLayoutInitialized) return;
         const validIds = new Set(widgetCatalog.map((widget) => widget.id));
-        setActiveWidgetIds((previousIds) => {
-            const stillValid = previousIds.filter((id) => validIds.has(id));
-            if (stillValid.length > 0) return stillValid;
-            return widgetCatalog.slice(0, 6).map((widget) => widget.id);
+        const widgetMap = new Map(widgetCatalog.map((widget) => [widget.id, widget]));
+        setActiveWidgetInstances((previousInstances) => {
+            const normalizedInstances = previousInstances
+                .filter((instance) => validIds.has(instance.widgetId))
+                .map((instance) => {
+                    const template = widgetMap.get(instance.widgetId);
+                    if (!template) return instance;
+                    return {
+                        ...instance,
+                        config: normalizeWidgetConfig(template, instance.config),
+                    };
+                });
+
+            if (normalizedInstances.length > 0) return normalizedInstances;
+            return widgetCatalog
+                .slice(0, 6)
+                .map((widget) => createWidgetInstance(widget.id, getDefaultWidgetConfig(widget)));
         });
-    }, [widgetCatalog]);
+    }, [widgetCatalog, isLayoutInitialized, normalizeWidgetConfig, getDefaultWidgetConfig]);
+
+    useEffect(() => {
+        if (!isLayoutInitialized || isLayoutLoading) return;
+        const saveTimer = window.setTimeout(() => {
+            void saveInstagramDashboardLayout({
+                igUserId: INSTAGRAM_USER_ID,
+                dashboardUserId: dashboardLayoutUserId,
+                activeWidgets: activeWidgetInstances.map(toLayoutWidget),
+            });
+        }, 300);
+
+        return () => {
+            window.clearTimeout(saveTimer);
+        };
+    }, [
+        activeWidgetInstances,
+        dashboardLayoutUserId,
+        isLayoutInitialized,
+        isLayoutLoading,
+    ]);
 
     const widgetById = useMemo(() => {
         const map = new Map<string, DashboardWidget>();
@@ -834,16 +1168,67 @@ export default function InstagramPage() {
 
     const activeWidgets = useMemo(
         () =>
-            activeWidgetIds
-                .map((id) => widgetById.get(id))
-                .filter((widget): widget is DashboardWidget => widget !== undefined),
-        [activeWidgetIds, widgetById],
+            activeWidgetInstances
+                .map((instance) => {
+                    const template = widgetById.get(instance.widgetId);
+                    if (!template) return null;
+                    return { template, instance } satisfies ActiveDashboardWidget;
+                })
+                .filter((widget): widget is ActiveDashboardWidget => widget !== null),
+        [activeWidgetInstances, widgetById],
     );
 
-    const availableWidgets = useMemo(
-        () => widgetCatalog.filter((widget) => !activeWidgetIds.includes(widget.id)),
-        [widgetCatalog, activeWidgetIds],
+    const availableWidgets = widgetCatalog;
+
+    const postWidgetCatalog = useMemo(
+        () => widgetCatalog.filter((widget) => POST_WIDGET_KINDS.has(widget.kind)),
+        [widgetCatalog],
     );
+
+    const postWidgetById = useMemo(() => {
+        const map = new Map<string, DashboardWidget>();
+        postWidgetCatalog.forEach((widget) => map.set(widget.id, widget));
+        return map;
+    }, [postWidgetCatalog]);
+
+    const activePostWidgets = useMemo(
+        () =>
+            activePostWidgetInstances
+                .map((instance) => {
+                    const template = postWidgetById.get(instance.widgetId);
+                    if (!template) return null;
+                    return { template, instance } satisfies ActiveDashboardWidget;
+                })
+                .filter((widget): widget is ActiveDashboardWidget => widget !== null),
+        [activePostWidgetInstances, postWidgetById],
+    );
+
+    const availablePostWidgets = postWidgetCatalog;
+
+    useEffect(() => {
+        const validIds = new Set(postWidgetCatalog.map((widget) => widget.id));
+        const widgetMap = new Map(postWidgetCatalog.map((widget) => [widget.id, widget]));
+        setActivePostWidgetInstances((previousInstances) => {
+            const normalizedInstances = previousInstances
+                .filter((instance) => validIds.has(instance.widgetId))
+                .map((instance) => {
+                    const template = widgetMap.get(instance.widgetId);
+                    if (!template) return instance;
+                    return {
+                        ...instance,
+                        config: normalizeWidgetConfig(template, instance.config),
+                    };
+                });
+
+            if (normalizedInstances.length > 0 || postWidgetCatalog.length === 0) {
+                return normalizedInstances;
+            }
+
+            return postWidgetCatalog
+                .slice(0, 4)
+                .map((widget) => createWidgetInstance(widget.id, getDefaultWidgetConfig(widget)));
+        });
+    }, [postWidgetCatalog, normalizeWidgetConfig, getDefaultWidgetConfig]);
 
     const postTypeDistribution = useMemo(() => {
         const counts = new Map<string, number>();
@@ -854,127 +1239,8 @@ export default function InstagramPage() {
         return Array.from(counts.entries()).map(([type, count]) => ({ type, count }));
     }, [postsForDisplay]);
 
-    const postTypeAggregates = useMemo<PostTypeAggregate[]>(() => {
-        const aggregateMap = new Map<string, PostTypeAggregate>();
-
-        for (const post of postsForDisplay) {
-            const type = normalizePostTypeLabel(post.postType);
-            const existing =
-                aggregateMap.get(type) ||
-                ({
-                    type,
-                    count: 0,
-                    totals: {},
-                } satisfies PostTypeAggregate);
-
-            existing.count += 1;
-            Object.entries(post.metrics).forEach(([metricKey, metricValue]) => {
-                existing.totals[metricKey] = (existing.totals[metricKey] || 0) + metricValue;
-            });
-
-            aggregateMap.set(type, existing);
-        }
-
-        return Array.from(aggregateMap.values()).sort((a, b) => {
-            const interactionsA = a.totals.total_interactions || 0;
-            const interactionsB = b.totals.total_interactions || 0;
-            return interactionsB - interactionsA;
-        });
-    }, [postsForDisplay]);
-
-    const bestPostTypeByInteractions = useMemo(
-        () => getTopPostTypeByMetric(postTypeAggregates, 'total_interactions'),
-        [postTypeAggregates],
-    );
-    const bestPostTypeByViews = useMemo(
-        () => getTopPostTypeByMetric(postTypeAggregates, 'views'),
-        [postTypeAggregates],
-    );
-    const bestPostTypeByReach = useMemo(
-        () => getTopPostTypeByMetric(postTypeAggregates, 'reach'),
-        [postTypeAggregates],
-    );
-
-    const postTypeMetricTotals = useMemo(
-        () =>
-            postTypeAggregates
-                .map((aggregate) => ({
-                    type: aggregate.type,
-                    total: aggregate.totals[postGrowthMetricKey] || 0,
-                    posts: aggregate.count,
-                }))
-                .sort((a, b) => b.total - a.total),
-        [postTypeAggregates, postGrowthMetricKey],
-    );
-
-    const postTypeGrowthSeries = useMemo(() => {
-        const rankedTypes = postTypeMetricTotals
-            .filter((entry) => entry.total > 0)
-            .slice(0, 5)
-            .map((entry) => entry.type);
-        if (rankedTypes.length === 0) {
-            return { data: [] as Array<Record<string, number | string>>, types: [] as string[] };
-        }
-
-        const topTypeSet = new Set(rankedTypes);
-        const dailyRows = new Map<
-            string,
-            {
-                sortValue: number;
-                dateLabel: string;
-                totals: Record<string, number>;
-            }
-        >();
-
-        for (const post of postsForDisplay) {
-            if (!post.publishTime) continue;
-            const publishDate = parseDate(post.publishTime);
-            if (!publishDate) continue;
-
-            const type = normalizePostTypeLabel(post.postType);
-            if (!topTypeSet.has(type)) continue;
-
-            const metricValue = post.metrics[postGrowthMetricKey] || 0;
-            const dateKey = publishDate.toISOString().slice(0, 10);
-            const row = dailyRows.get(dateKey) || {
-                sortValue: publishDate.getTime(),
-                dateLabel: formatDateWithYear(publishDate),
-                totals: {},
-            };
-            row.totals[type] = (row.totals[type] || 0) + metricValue;
-            dailyRows.set(dateKey, row);
-        }
-
-        const sortedRows = Array.from(dailyRows.values()).sort((a, b) => a.sortValue - b.sortValue);
-        const runningTotals: Record<string, number> = {};
-        rankedTypes.forEach((type) => {
-            runningTotals[type] = 0;
-        });
-
-        const data = sortedRows.map((row) => {
-            const chartEntry: Record<string, string | number> = {
-                date: row.dateLabel,
-            };
-
-            rankedTypes.forEach((type) => {
-                runningTotals[type] += row.totals[type] || 0;
-                chartEntry[type] = Math.round(runningTotals[type]);
-            });
-
-            return chartEntry;
-        });
-
-        return { data, types: rankedTypes };
-    }, [postsForDisplay, postGrowthMetricKey, postTypeMetricTotals]);
-
-    const topPostsByInteractions = useMemo(
-        () =>
-            [...postsForDisplay]
-                .sort(
-                    (a, b) =>
-                        (b.metrics.total_interactions || 0) - (a.metrics.total_interactions || 0),
-                )
-                .slice(0, 8),
+    const topPostsByMetric = useMemo(
+        () => rankPostsByMetric(postsForDisplay, 'total_interactions'),
         [postsForDisplay],
     );
 
@@ -990,12 +1256,12 @@ export default function InstagramPage() {
 
     const postViewsVsReach = useMemo(
         () =>
-            topPostsByInteractions.slice(0, 8).map((post) => ({
+            topPostsByMetric.slice(0, 8).map((post) => ({
                 postId: post.postId.slice(-6),
                 views: post.metrics.views || 0,
                 reach: post.metrics.reach || 0,
             })),
-        [topPostsByInteractions],
+        [topPostsByMetric],
     );
 
     const metricOverviewData = useMemo(
@@ -1008,6 +1274,31 @@ export default function InstagramPage() {
                 })),
         [seriesForDisplay],
     );
+
+    const channelMetricRows = useMemo(() => {
+        const rowsByDate = new Map<
+            string,
+            {
+                dateLabel: string;
+                sortValue: number;
+                values: Record<string, number>;
+            }
+        >();
+
+        for (const series of seriesForDisplay) {
+            for (const point of series.points) {
+                const existing = rowsByDate.get(point.dateKey) || {
+                    dateLabel: point.dateLabel,
+                    sortValue: point.sortValue,
+                    values: {},
+                };
+                existing.values[series.key] = point.value;
+                rowsByDate.set(point.dateKey, existing);
+            }
+        }
+
+        return Array.from(rowsByDate.values()).sort((a, b) => a.sortValue - b.sortValue);
+    }, [seriesForDisplay]);
 
     const typeOptions = useMemo(
         () => ['all', ...postTypeDistribution.map((item) => item.type)],
@@ -1096,16 +1387,18 @@ export default function InstagramPage() {
     const followsChange = globalFollowsSeries
         ? getMetricChange(globalFollowsSeries.points, followsSeries ? followsSeries.points : [], selectedDateRange)
         : undefined;
-    const selectedPostGrowthMetricLabel =
-        POST_TYPE_GROWTH_METRIC_OPTIONS.find((option) => option.value === postGrowthMetricKey)?.label ||
-        formatMetricLabel(postGrowthMetricKey);
 
-    const renderWidget = (widget: DashboardWidget) => {
+    const updateWidgetConfig = useCallback((instanceId: string, patch: Partial<DashboardWidgetConfig>) => {
+        setActiveWidgetInstances((previousInstances) => applyWidgetConfigPatch(previousInstances, instanceId, patch));
+        setActivePostWidgetInstances((previousInstances) => applyWidgetConfigPatch(previousInstances, instanceId, patch));
+    }, []);
+
+    const renderWidget = (widget: DashboardWidget, widgetInstance: DashboardWidgetInstance) => {
         if (widget.kind === 'channel-overview') {
             if (metricOverviewData.length === 0) {
                 return (
                     <p className="text-xs text-stone-400">
-                        No channelwise metric rows available in MongoDB for {INSTAGRAM_USER_ID}.
+                        No channelwise metric rows available for {INSTAGRAM_USER_ID}.
                     </p>
                 );
             }
@@ -1164,9 +1457,193 @@ export default function InstagramPage() {
             );
         }
 
+        if (widget.kind === 'dynamic-metric-line') {
+            if (channelMetricOptions.length === 0) {
+                return <p className="text-xs text-stone-400">No channel metrics available to visualize.</p>;
+            }
+
+            const selectedMetricKey = channelMetricOptions.some((option) => option.value === widgetInstance.config.metricKey)
+                ? widgetInstance.config.metricKey || channelMetricOptions[0].value
+                : channelMetricOptions[0].value;
+            const selectedSeries = seriesByKey.get(selectedMetricKey);
+
+            if (!selectedSeries || selectedSeries.points.length === 0) {
+                return <p className="text-xs text-stone-400">No trend points available for this metric.</p>;
+            }
+
+            const chartData = selectedSeries.points.map((point) => ({
+                date: point.dateLabel,
+                value: point.value,
+            }));
+
+            return (
+                <div className="space-y-2">
+                    <Select
+                        value={selectedMetricKey}
+                        onValueChange={(value) =>
+                            updateWidgetConfig(widgetInstance.instanceId, {
+                                metricKey: value,
+                            })
+                        }
+                    >
+                        <SelectTrigger className="h-8 w-[190px] text-xs">
+                            <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                            {channelMetricOptions.map((option) => (
+                                <SelectItem key={option.value} value={option.value}>
+                                    {option.label}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                    <div className="flex items-center justify-between text-xs text-stone-500">
+                        <span>Total: {Math.round(selectedSeries.total).toLocaleString()}</span>
+                        <span>Latest: {Math.round(selectedSeries.latest).toLocaleString()}</span>
+                    </div>
+                    <div className="h-[220px]">
+                        <ResponsiveContainer width="100%" height="100%">
+                            <AreaChart data={chartData}>
+                                <CartesianGrid strokeDasharray="3 3" stroke="#E7E5E4" />
+                                <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#78716C' }} />
+                                <YAxis tick={{ fontSize: 10, fill: '#78716C' }} />
+                                <Tooltip />
+                                <Area
+                                    type="monotone"
+                                    dataKey="value"
+                                    stroke={metricColor(selectedMetricKey)}
+                                    fill={metricColor(selectedMetricKey)}
+                                    fillOpacity={0.14}
+                                    strokeWidth={2}
+                                />
+                            </AreaChart>
+                        </ResponsiveContainer>
+                    </div>
+                </div>
+            );
+        }
+
+        if (widget.kind === 'metric-scatter-compare') {
+            if (channelMetricOptions.length < 2) {
+                return <p className="text-xs text-stone-400">At least two channel metrics are required to compare axes.</p>;
+            }
+
+            const defaultXMetricKey = channelMetricOptions[0].value;
+            const selectedXMetricKey = channelMetricOptions.some((option) => option.value === widgetInstance.config.xMetricKey)
+                ? widgetInstance.config.xMetricKey || defaultXMetricKey
+                : defaultXMetricKey;
+
+            const defaultYMetricKey =
+                channelMetricOptions.find((option) => option.value !== selectedXMetricKey)?.value || selectedXMetricKey;
+            const selectedYMetricKey = channelMetricOptions.some((option) => option.value === widgetInstance.config.yMetricKey)
+                ? widgetInstance.config.yMetricKey || defaultYMetricKey
+                : defaultYMetricKey;
+
+            const scatterData = channelMetricRows
+                .filter((row) => {
+                    const xValue = row.values[selectedXMetricKey];
+                    const yValue = row.values[selectedYMetricKey];
+                    return Number.isFinite(xValue) && Number.isFinite(yValue);
+                })
+                .map((row) => ({
+                    date: row.dateLabel,
+                    x: row.values[selectedXMetricKey],
+                    y: row.values[selectedYMetricKey],
+                }));
+
+            if (scatterData.length === 0) {
+                return (
+                    <p className="text-xs text-stone-400">
+                        No overlapping points found for {formatMetricLabel(selectedXMetricKey)} and{' '}
+                        {formatMetricLabel(selectedYMetricKey)}.
+                    </p>
+                );
+            }
+
+            return (
+                <div className="space-y-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                        <Select
+                            value={selectedXMetricKey}
+                            onValueChange={(value) =>
+                                updateWidgetConfig(widgetInstance.instanceId, {
+                                    xMetricKey: value,
+                                })
+                            }
+                        >
+                            <SelectTrigger className="h-8 w-[180px] text-xs">
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {channelMetricOptions.map((option) => (
+                                    <SelectItem key={option.value} value={option.value}>
+                                        X: {option.label}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                        <Select
+                            value={selectedYMetricKey}
+                            onValueChange={(value) =>
+                                updateWidgetConfig(widgetInstance.instanceId, {
+                                    yMetricKey: value,
+                                })
+                            }
+                        >
+                            <SelectTrigger className="h-8 w-[180px] text-xs">
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {channelMetricOptions.map((option) => (
+                                    <SelectItem key={option.value} value={option.value}>
+                                        Y: {option.label}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    </div>
+                    <div className="h-[240px]">
+                        <ResponsiveContainer width="100%" height="100%">
+                            <ScatterChart>
+                                <CartesianGrid strokeDasharray="3 3" stroke="#E7E5E4" />
+                                <XAxis
+                                    type="number"
+                                    dataKey="x"
+                                    name={formatMetricLabel(selectedXMetricKey)}
+                                    tick={{ fontSize: 10, fill: '#78716C' }}
+                                />
+                                <YAxis
+                                    type="number"
+                                    dataKey="y"
+                                    name={formatMetricLabel(selectedYMetricKey)}
+                                    tick={{ fontSize: 10, fill: '#78716C' }}
+                                />
+                                <Tooltip
+                                    cursor={{ strokeDasharray: '3 3' }}
+                                    formatter={(value, _name, props) => {
+                                        const isXAxis = props.dataKey === 'x';
+                                        const label = isXAxis
+                                            ? formatMetricLabel(selectedXMetricKey)
+                                            : formatMetricLabel(selectedYMetricKey);
+                                        return [Number(value).toLocaleString(), label];
+                                    }}
+                                    labelFormatter={(_label, payload) => {
+                                        if (!payload || payload.length === 0) return '';
+                                        const row = payload[0]?.payload as { date?: string } | undefined;
+                                        return row?.date || '';
+                                    }}
+                                />
+                                <Scatter data={scatterData} fill="#7C3AED" />
+                            </ScatterChart>
+                        </ResponsiveContainer>
+                    </div>
+                </div>
+            );
+        }
+
         if (widget.kind === 'post-type-distribution') {
             if (postTypeDistribution.length === 0) {
-                return <p className="text-xs text-stone-400">No post rows available in MongoDB.</p>;
+                return <p className="text-xs text-stone-400">No post rows available.</p>;
             }
 
             return (
@@ -1195,16 +1672,44 @@ export default function InstagramPage() {
         }
 
         if (widget.kind === 'top-posts') {
-            if (topPostsByInteractions.length === 0) {
-                return <p className="text-xs text-stone-400">No post interaction data available.</p>;
+            const selectedMetricKey = normalizePostMetricKey(widgetInstance.config.postMetricKey, postGrowthMetricKey);
+            const selectedMetricLabel =
+                POST_TYPE_GROWTH_METRIC_OPTIONS.find((option) => option.value === selectedMetricKey)?.label ||
+                formatMetricLabel(selectedMetricKey);
+            const rankedPosts = rankPostsByMetric(postsForDisplay, selectedMetricKey);
+
+            if (rankedPosts.length === 0) {
+                return <p className="text-xs text-stone-400">No post ranking data available.</p>;
             }
 
             return (
                 <div className="space-y-2">
-                    {topPostsByInteractions.slice(0, 6).map((post) => (
-                        <div
+                    <Select
+                        value={selectedMetricKey}
+                        onValueChange={(value) =>
+                            updateWidgetConfig(widgetInstance.instanceId, {
+                                postMetricKey: value as PostMetricKey,
+                            })
+                        }
+                    >
+                        <SelectTrigger className="h-8 w-[180px] text-xs">
+                            <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                            {POST_TYPE_GROWTH_METRIC_OPTIONS.map((option) => (
+                                <SelectItem key={option.value} value={option.value}>
+                                    {option.label}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+
+                    {rankedPosts.slice(0, 6).map((post) => (
+                        <button
                             key={post.postId}
-                            className="flex items-center justify-between rounded-md border border-stone-100 bg-stone-50 px-3 py-2"
+                            type="button"
+                            onClick={() => setSelectedPost(post)}
+                            className="flex w-full items-center justify-between rounded-md border border-stone-100 bg-stone-50 px-3 py-2 text-left transition-colors hover:bg-stone-100"
                         >
                             <div className="min-w-0">
                                 <p className="truncate text-xs font-medium text-stone-800">{post.title}</p>
@@ -1212,12 +1717,71 @@ export default function InstagramPage() {
                             </div>
                             <div className="text-right">
                                 <p className="text-xs font-semibold text-stone-800">
-                                    {(post.metrics.total_interactions || 0).toLocaleString()}
+                                    {Math.round(getPostMetricValue(post, selectedMetricKey)).toLocaleString()}
                                 </p>
-                                <p className="text-[11px] text-stone-500">interactions</p>
+                                <p className="text-[11px] text-stone-500">
+                                    {selectedMetricLabel.toLowerCase()}
+                                </p>
                             </div>
-                        </div>
+                        </button>
                     ))}
+                </div>
+            );
+        }
+
+        if (widget.kind === 'post-metric-trend') {
+            const selectedMetricKey = normalizePostMetricKey(widgetInstance.config.postMetricKey, postGrowthMetricKey);
+            const selectedMetricLabel =
+                POST_TYPE_GROWTH_METRIC_OPTIONS.find((option) => option.value === selectedMetricKey)?.label ||
+                formatMetricLabel(selectedMetricKey);
+            const trendData = buildPostMetricTrendData(postsForDisplay, selectedMetricKey);
+
+            if (trendData.length === 0) {
+                return (
+                    <p className="text-xs text-stone-400">
+                        No publish-time trend data available for {selectedMetricLabel.toLowerCase()}.
+                    </p>
+                );
+            }
+
+            return (
+                <div className="space-y-2">
+                    <Select
+                        value={selectedMetricKey}
+                        onValueChange={(value) =>
+                            updateWidgetConfig(widgetInstance.instanceId, {
+                                postMetricKey: value as PostMetricKey,
+                            })
+                        }
+                    >
+                        <SelectTrigger className="h-8 w-[180px] text-xs">
+                            <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                            {POST_TYPE_GROWTH_METRIC_OPTIONS.map((option) => (
+                                <SelectItem key={option.value} value={option.value}>
+                                    {option.label}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                    <div className="h-[220px]">
+                        <ResponsiveContainer width="100%" height="100%">
+                            <LineChart data={trendData}>
+                                <CartesianGrid strokeDasharray="3 3" stroke="#E7E5E4" />
+                                <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#78716C' }} />
+                                <YAxis tick={{ fontSize: 10, fill: '#78716C' }} />
+                                <Tooltip />
+                                <Line
+                                    type="monotone"
+                                    dataKey="value"
+                                    stroke={metricColor(selectedMetricKey)}
+                                    strokeWidth={2}
+                                    dot={false}
+                                />
+                            </LineChart>
+                        </ResponsiveContainer>
+                    </div>
                 </div>
             );
         }
@@ -1266,35 +1830,228 @@ export default function InstagramPage() {
         return <p className="text-xs text-stone-400">Unsupported widget type.</p>;
     };
 
+    const renderWidgetPickerPreview = (widget: DashboardWidget) => (
+        <div className="mt-3 rounded-md border border-stone-100 bg-stone-50 p-2">
+            {widget.kind === 'metric-line' || widget.kind === 'dynamic-metric-line' ? (
+                <div className="h-10 rounded bg-gradient-to-r from-violet-100 via-violet-50 to-white" />
+            ) : widget.kind === 'metric-scatter-compare' ? (
+                <div className="grid grid-cols-2 gap-1">
+                    <div className="h-8 rounded bg-violet-100" />
+                    <div className="h-8 rounded bg-blue-100" />
+                </div>
+            ) : widget.kind === 'post-type-distribution' ? (
+                <div className="grid grid-cols-3 gap-1">
+                    <div className="h-8 rounded-full bg-violet-100" />
+                    <div className="h-8 rounded-full bg-blue-100" />
+                    <div className="h-8 rounded-full bg-emerald-100" />
+                </div>
+            ) : (
+                <div className="space-y-1.5">
+                    <div className="h-2 rounded bg-stone-200" />
+                    <div className="h-2 w-5/6 rounded bg-stone-200" />
+                    <div className="h-2 w-2/3 rounded bg-stone-200" />
+                </div>
+            )}
+        </div>
+    );
+
     const addWidget = (widgetId: string) => {
-        setActiveWidgetIds((previousIds) => {
-            if (previousIds.includes(widgetId)) return previousIds;
-            return [...previousIds, widgetId];
-        });
+        const template = widgetById.get(widgetId);
+        if (!template) return;
+        setActiveWidgetInstances((previousInstances) => [
+            ...previousInstances,
+            createWidgetInstance(widgetId, getDefaultWidgetConfig(template)),
+        ]);
         setWidgetSheetOpen(false);
     };
 
-    const removeWidget = (widgetId: string) => {
-        setActiveWidgetIds((previousIds) => previousIds.filter((id) => id !== widgetId));
+    const removeWidget = (instanceId: string) => {
+        setActiveWidgetInstances((previousInstances) =>
+            previousInstances.filter((instance) => instance.instanceId !== instanceId),
+        );
     };
+
+    const addPostWidget = (widgetId: string) => {
+        const template = postWidgetById.get(widgetId);
+        if (!template) return;
+        setActivePostWidgetInstances((previousInstances) => [
+            ...previousInstances,
+            createWidgetInstance(widgetId, getDefaultWidgetConfig(template)),
+        ]);
+        setPostWidgetSheetOpen(false);
+    };
+
+    const removePostWidget = (instanceId: string) => {
+        setActivePostWidgetInstances((previousInstances) =>
+            previousInstances.filter((instance) => instance.instanceId !== instanceId),
+        );
+    };
+
+    const handleWidgetDragStart = useCallback((event: React.DragEvent<HTMLDivElement>, instanceId: string) => {
+        dragItemRef.current = instanceId;
+        event.dataTransfer.effectAllowed = 'move';
+        event.dataTransfer.setData('text/plain', instanceId);
+        event.currentTarget.style.opacity = '0.6';
+    }, []);
+
+    const handleWidgetDragEnd = useCallback((event: React.DragEvent<HTMLDivElement>) => {
+        event.currentTarget.style.opacity = '1';
+        setDragOverId(null);
+        dragItemRef.current = null;
+    }, []);
+
+    const handleWidgetDragOver = useCallback((event: React.DragEvent<HTMLDivElement>, targetInstanceId: string) => {
+        event.preventDefault();
+        event.dataTransfer.dropEffect = 'move';
+        if (dragItemRef.current && dragItemRef.current !== targetInstanceId) {
+            setDragOverId(targetInstanceId);
+        }
+    }, []);
+
+    const handleWidgetDragLeave = useCallback(() => {
+        setDragOverId(null);
+    }, []);
+
+    const handleWidgetDrop = useCallback((event: React.DragEvent<HTMLDivElement>, targetInstanceId: string) => {
+        event.preventDefault();
+        const sourceInstanceId = dragItemRef.current;
+        if (!sourceInstanceId || sourceInstanceId === targetInstanceId) return;
+
+        setActiveWidgetInstances((previousInstances) => {
+            const nextInstances = [...previousInstances];
+            const sourceIndex = nextInstances.findIndex((instance) => instance.instanceId === sourceInstanceId);
+            const targetIndex = nextInstances.findIndex((instance) => instance.instanceId === targetInstanceId);
+            if (sourceIndex < 0 || targetIndex < 0) return previousInstances;
+
+            const [movedWidget] = nextInstances.splice(sourceIndex, 1);
+            nextInstances.splice(targetIndex, 0, movedWidget);
+            return nextInstances;
+        });
+
+        setDragOverId(null);
+        dragItemRef.current = null;
+    }, []);
+
+    const handlePostWidgetDragStart = useCallback((event: React.DragEvent<HTMLDivElement>, instanceId: string) => {
+        postWidgetDragItemRef.current = instanceId;
+        event.dataTransfer.effectAllowed = 'move';
+        event.dataTransfer.setData('text/plain', instanceId);
+        event.currentTarget.style.opacity = '0.6';
+    }, []);
+
+    const handlePostWidgetDragEnd = useCallback((event: React.DragEvent<HTMLDivElement>) => {
+        event.currentTarget.style.opacity = '1';
+        setPostWidgetDragOverId(null);
+        postWidgetDragItemRef.current = null;
+    }, []);
+
+    const handlePostWidgetDragOver = useCallback((event: React.DragEvent<HTMLDivElement>, targetInstanceId: string) => {
+        event.preventDefault();
+        event.dataTransfer.dropEffect = 'move';
+        if (postWidgetDragItemRef.current && postWidgetDragItemRef.current !== targetInstanceId) {
+            setPostWidgetDragOverId(targetInstanceId);
+        }
+    }, []);
+
+    const handlePostWidgetDragLeave = useCallback(() => {
+        setPostWidgetDragOverId(null);
+    }, []);
+
+    const handlePostWidgetDrop = useCallback((event: React.DragEvent<HTMLDivElement>, targetInstanceId: string) => {
+        event.preventDefault();
+        const sourceInstanceId = postWidgetDragItemRef.current;
+        if (!sourceInstanceId || sourceInstanceId === targetInstanceId) return;
+
+        setActivePostWidgetInstances((previousInstances) => {
+            const nextInstances = [...previousInstances];
+            const sourceIndex = nextInstances.findIndex((instance) => instance.instanceId === sourceInstanceId);
+            const targetIndex = nextInstances.findIndex((instance) => instance.instanceId === targetInstanceId);
+            if (sourceIndex < 0 || targetIndex < 0) return previousInstances;
+
+            const [movedWidget] = nextInstances.splice(sourceIndex, 1);
+            nextInstances.splice(targetIndex, 0, movedWidget);
+            return nextInstances;
+        });
+
+        setPostWidgetDragOverId(null);
+        postWidgetDragItemRef.current = null;
+    }, []);
 
     return (
         <div className="space-y-6 pb-10">
             <div className="flex flex-wrap items-center justify-between gap-3">
-                <div className="flex items-center gap-3">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-100 text-violet-700">
+                <div className="flex items-start gap-3">
+                    <div className="mt-0.5 flex h-10 w-10 items-center justify-center rounded-xl bg-violet-100 text-violet-700">
                         <Instagram className="h-5 w-5" />
                     </div>
                     <div>
                         <h1 className="text-2xl font-heading font-bold text-stone-900">Instagram</h1>
                         <p className="text-sm text-stone-500">
-                            Live from MongoDB via manual APIs · user_id:{' '}
+                            Insights dashboard · user_id:{' '}
                             <span className="font-semibold">{INSTAGRAM_USER_ID}</span>
                         </p>
+                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                            <Popover>
+                                <PopoverTrigger asChild>
+                                    <Button variant="outline" size="sm" className="h-8 text-xs text-stone-700">
+                                        <CalendarDays className="mr-1.5 h-3.5 w-3.5 text-violet-600" />
+                                        {formatDateRangeLabel(selectedCalendarRange)}
+                                    </Button>
+                                </PopoverTrigger>
+                                <PopoverContent align="start" className="w-auto p-0">
+                                    <DayPicker
+                                        mode="range"
+                                        selected={selectedCalendarRange}
+                                        onSelect={setSelectedCalendarRange}
+                                        numberOfMonths={2}
+                                        className="p-3"
+                                        classNames={{
+                                            months: 'flex flex-col gap-4 sm:flex-row sm:gap-6',
+                                            month: 'space-y-4',
+                                            month_caption:
+                                                'flex items-center justify-center px-1 pt-1 text-sm font-medium text-stone-700',
+                                            nav: 'flex items-center gap-1',
+                                            button_previous:
+                                                'rounded-md border border-stone-200 p-1 text-stone-600 hover:bg-stone-100',
+                                            button_next:
+                                                'rounded-md border border-stone-200 p-1 text-stone-600 hover:bg-stone-100',
+                                            month_grid: 'w-full border-collapse',
+                                            weekdays: 'flex',
+                                            weekday:
+                                                'w-9 text-center text-[11px] font-medium uppercase text-stone-400',
+                                            week: 'mt-1 flex w-full',
+                                            day: 'h-9 w-9 p-0 text-center',
+                                            day_button:
+                                                'h-9 w-9 rounded-md text-sm text-stone-700 transition-colors hover:bg-violet-50',
+                                            selected:
+                                                'bg-violet-600 text-white hover:bg-violet-600 hover:text-white focus:bg-violet-600 focus:text-white',
+                                            range_start:
+                                                'bg-violet-600 text-white hover:bg-violet-600 hover:text-white',
+                                            range_end:
+                                                'bg-violet-600 text-white hover:bg-violet-600 hover:text-white',
+                                            range_middle: 'bg-violet-100 text-violet-900',
+                                            outside: 'text-stone-300',
+                                            today: 'font-semibold text-violet-700',
+                                            disabled: 'text-stone-300',
+                                        }}
+                                    />
+                                </PopoverContent>
+                            </Popover>
+                            <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                className="h-8 text-xs"
+                                onClick={() => setSelectedCalendarRange(undefined)}
+                                disabled={!selectedCalendarRange?.from && !selectedCalendarRange?.to}
+                            >
+                                Clear dates
+                            </Button>
+                        </div>
                     </div>
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center justify-end gap-2">
                     <Tabs value={view} onValueChange={(next) => setView(next as 'dashboard' | 'posts')}>
                         <TabsList className="bg-stone-100">
                             <TabsTrigger value="dashboard" className="text-xs">
@@ -1308,94 +2065,15 @@ export default function InstagramPage() {
                         </TabsList>
                     </Tabs>
 
+                    <Button asChild variant="outline" size="sm">
+                        <Link href="/channels/manual-upload">Upload Data</Link>
+                    </Button>
                     <Button variant="outline" size="sm" onClick={() => void loadDashboardData()} disabled={isLoading}>
                         <RefreshCw className={cn('h-3.5 w-3.5', isLoading && 'animate-spin')} />
                         Refresh
                     </Button>
                 </div>
             </div>
-
-            <Card className="border-stone-200">
-                <CardContent className="pt-5">
-                    <div className="flex flex-wrap items-center gap-2">
-                        <Popover>
-                            <PopoverTrigger asChild>
-                                <Button
-                                    variant="outline"
-                                    className="h-9 min-w-[280px] justify-start text-left font-normal text-stone-700"
-                                >
-                                    <CalendarDays className="mr-2 h-4 w-4 text-violet-600" />
-                                    {formatDateRangeLabel(selectedCalendarRange)}
-                                </Button>
-                            </PopoverTrigger>
-                            <PopoverContent align="start" className="w-auto p-0">
-                                <DayPicker
-                                    mode="range"
-                                    selected={selectedCalendarRange}
-                                    onSelect={setSelectedCalendarRange}
-                                    numberOfMonths={2}
-                                    className="p-3"
-                                    classNames={{
-                                        months: 'flex flex-col gap-4 sm:flex-row sm:gap-6',
-                                        month: 'space-y-4',
-                                        month_caption:
-                                            'flex items-center justify-center px-1 pt-1 text-sm font-medium text-stone-700',
-                                        nav: 'flex items-center gap-1',
-                                        button_previous:
-                                            'rounded-md border border-stone-200 p-1 text-stone-600 hover:bg-stone-100',
-                                        button_next:
-                                            'rounded-md border border-stone-200 p-1 text-stone-600 hover:bg-stone-100',
-                                        month_grid: 'w-full border-collapse',
-                                        weekdays: 'flex',
-                                        weekday:
-                                            'w-9 text-center text-[11px] font-medium uppercase text-stone-400',
-                                        week: 'mt-1 flex w-full',
-                                        day: 'h-9 w-9 p-0 text-center',
-                                        day_button:
-                                            'h-9 w-9 rounded-md text-sm text-stone-700 transition-colors hover:bg-violet-50',
-                                        selected:
-                                            'bg-violet-600 text-white hover:bg-violet-600 hover:text-white focus:bg-violet-600 focus:text-white',
-                                        range_start:
-                                            'bg-violet-600 text-white hover:bg-violet-600 hover:text-white',
-                                        range_end:
-                                            'bg-violet-600 text-white hover:bg-violet-600 hover:text-white',
-                                        range_middle: 'bg-violet-100 text-violet-900',
-                                        outside: 'text-stone-300',
-                                        today: 'font-semibold text-violet-700',
-                                        disabled: 'text-stone-300',
-                                    }}
-                                />
-                            </PopoverContent>
-                        </Popover>
-                        <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => setSelectedCalendarRange(undefined)}
-                            disabled={!selectedCalendarRange?.from && !selectedCalendarRange?.to}
-                        >
-                            Clear
-                        </Button>
-                        {isDateRangeActive && selectedDateRange && (
-                            <Badge variant="outline" className="border-violet-200 bg-violet-50 text-violet-700">
-                                {formatDateWithYear(selectedDateRange.startDate)} -{' '}
-                                {formatDateWithYear(selectedDateRange.endDate)}
-                            </Badge>
-                        )}
-                    </div>
-                    {isDateRangePending ? (
-                        <p className="mt-2 text-xs text-stone-500">
-                            Select the check-out date to apply range filtering.
-                        </p>
-                    ) : (
-                        <p className="mt-2 text-xs text-stone-500">
-                            {isDateRangeActive
-                                ? 'Dashboard metrics and widgets are filtered to the selected range.'
-                                : 'Showing all dates. Select a start and end date to filter results.'}
-                        </p>
-                    )}
-                </CardContent>
-            </Card>
 
             {errorMessage && (
                 <Card className="border-red-200 bg-red-50">
@@ -1470,28 +2148,38 @@ export default function InstagramPage() {
                                     Add Widget
                                 </Button>
                             </SheetTrigger>
-                            <SheetContent>
+                            <SheetContent className="overflow-hidden">
                                 <SheetHeader>
-                                    <SheetTitle>Instagram Widgets (MongoDB-backed)</SheetTitle>
+                                    <SheetTitle>Instagram Widgets</SheetTitle>
                                 </SheetHeader>
-                                <div className="mt-4 space-y-2">
-                                    {availableWidgets.length === 0 ? (
-                                        <p className="text-sm text-stone-500">
-                                            All available widgets are already added.
-                                        </p>
-                                    ) : (
-                                        availableWidgets.map((widget) => (
-                                            <button
-                                                key={widget.id}
-                                                type="button"
-                                                onClick={() => addWidget(widget.id)}
-                                                className="w-full rounded-lg border border-stone-200 bg-stone-50 p-3 text-left transition-colors hover:bg-stone-100"
-                                            >
-                                                <p className="text-sm font-medium text-stone-800">{widget.title}</p>
-                                                <p className="mt-1 text-xs text-stone-500">{widget.description}</p>
-                                            </button>
-                                        ))
-                                    )}
+                                <div className="mt-4 flex-1 min-h-0 overflow-y-auto px-2">
+                                    <div className="grid grid-cols-1 gap-3 pb-1">
+                                        {availableWidgets.length === 0 ? (
+                                            <p className="text-sm text-stone-500">
+                                                Widget options will appear once metric or post data is available.
+                                            </p>
+                                        ) : (
+                                            availableWidgets.map((widget) => (
+                                                <button
+                                                    key={widget.id}
+                                                    type="button"
+                                                    onClick={() => addWidget(widget.id)}
+                                                    className="w-full rounded-xl border border-stone-200 bg-white p-3 text-left shadow-sm transition-all hover:border-violet-200 hover:shadow"
+                                                >
+                                                    <div className="flex items-start justify-between gap-2">
+                                                        <div>
+                                                            <p className="text-sm font-medium text-stone-800">{widget.title}</p>
+                                                            <p className="mt-1 text-xs text-stone-500">{widget.description}</p>
+                                                        </div>
+                                                        <Badge variant="outline" className="text-[10px]">
+                                                            {widget.kind.replace(/-/g, ' ')}
+                                                        </Badge>
+                                                    </div>
+                                                    {renderWidgetPickerPreview(widget)}
+                                                </button>
+                                            ))
+                                        )}
+                                    </div>
                                 </div>
                             </SheetContent>
                         </Sheet>
@@ -1500,7 +2188,7 @@ export default function InstagramPage() {
                     {isLoading ? (
                         <Card>
                             <CardContent className="py-10 text-center text-sm text-stone-500">
-                                Loading Instagram insights from backend...
+                                Loading Instagram insights...
                             </CardContent>
                         </Card>
                     ) : (
@@ -1512,21 +2200,38 @@ export default function InstagramPage() {
                                     </CardContent>
                                 </Card>
                             ) : (
-                                activeWidgets.map((widget) => (
-                                    <Card key={widget.id} className="relative border-stone-200">
-                                        <button
-                                            type="button"
-                                            onClick={() => removeWidget(widget.id)}
-                                            className="absolute right-2 top-2 rounded-full p-1 text-stone-400 transition-colors hover:bg-red-50 hover:text-red-500"
-                                            aria-label={`Remove ${widget.title}`}
-                                        >
-                                            <X className="h-3.5 w-3.5" />
-                                        </button>
-                                        <CardHeader className="pb-2 pr-10">
-                                            <CardTitle className="text-sm text-stone-800">{widget.title}</CardTitle>
-                                            <CardDescription className="text-xs">{widget.description}</CardDescription>
+                                activeWidgets.map(({ template, instance }) => (
+                                    <Card
+                                        key={instance.instanceId}
+                                        draggable
+                                        onDragStart={(event) => handleWidgetDragStart(event, instance.instanceId)}
+                                        onDragEnd={handleWidgetDragEnd}
+                                        onDragOver={(event) => handleWidgetDragOver(event, instance.instanceId)}
+                                        onDragLeave={handleWidgetDragLeave}
+                                        onDrop={(event) => handleWidgetDrop(event, instance.instanceId)}
+                                        className={cn(
+                                            'relative cursor-move border-stone-200 transition-colors',
+                                            dragOverId === instance.instanceId && 'border-violet-400 bg-violet-50/50',
+                                        )}
+                                    >
+                                        <div className="absolute right-2 top-2 flex items-center gap-1">
+                                            <div className="rounded-full p-1 text-stone-400" aria-hidden>
+                                                <GripVertical className="h-3.5 w-3.5" />
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={() => removeWidget(instance.instanceId)}
+                                                className="rounded-full p-1 text-stone-400 transition-colors hover:bg-red-50 hover:text-red-500"
+                                                aria-label={`Remove ${template.title}`}
+                                            >
+                                                <X className="h-3.5 w-3.5" />
+                                            </button>
+                                        </div>
+                                        <CardHeader className="pb-2 pr-16">
+                                            <CardTitle className="text-sm text-stone-800">{template.title}</CardTitle>
+                                            <CardDescription className="text-xs">{template.description}</CardDescription>
                                         </CardHeader>
-                                        <CardContent>{renderWidget(widget)}</CardContent>
+                                        <CardContent>{renderWidget(template, instance)}</CardContent>
                                     </Card>
                                 ))
                             )}
@@ -1563,218 +2268,103 @@ export default function InstagramPage() {
                             </Card>
                         ) : (
                             <>
-                                <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-                                    <Card className="border-stone-200">
-                                        <CardHeader className="pb-2">
-                                            <CardTitle className="text-sm text-stone-800">Best by Interactions</CardTitle>
-                                        </CardHeader>
-                                        <CardContent>
-                                            <p className="text-lg font-semibold text-violet-700">
-                                                {bestPostTypeByInteractions?.type || 'No data'}
-                                            </p>
-                                            <p className="text-xs text-stone-500">
-                                                {bestPostTypeByInteractions
-                                                    ? `${Math.round(bestPostTypeByInteractions.value).toLocaleString()} interactions across ${bestPostTypeByInteractions.count} posts`
-                                                    : 'No interaction metrics found.'}
-                                            </p>
-                                        </CardContent>
-                                    </Card>
-                                    <Card className="border-stone-200">
-                                        <CardHeader className="pb-2">
-                                            <CardTitle className="text-sm text-stone-800">Best by Views</CardTitle>
-                                        </CardHeader>
-                                        <CardContent>
-                                            <p className="text-lg font-semibold text-violet-700">
-                                                {bestPostTypeByViews?.type || 'No data'}
-                                            </p>
-                                            <p className="text-xs text-stone-500">
-                                                {bestPostTypeByViews
-                                                    ? `${Math.round(bestPostTypeByViews.value).toLocaleString()} views across ${bestPostTypeByViews.count} posts`
-                                                    : 'No view metrics found.'}
-                                            </p>
-                                        </CardContent>
-                                    </Card>
-                                    <Card className="border-stone-200">
-                                        <CardHeader className="pb-2">
-                                            <CardTitle className="text-sm text-stone-800">Best by Reach</CardTitle>
-                                        </CardHeader>
-                                        <CardContent>
-                                            <p className="text-lg font-semibold text-violet-700">
-                                                {bestPostTypeByReach?.type || 'No data'}
-                                            </p>
-                                            <p className="text-xs text-stone-500">
-                                                {bestPostTypeByReach
-                                                    ? `${Math.round(bestPostTypeByReach.value).toLocaleString()} reach across ${bestPostTypeByReach.count} posts`
-                                                    : 'No reach metrics found.'}
-                                            </p>
-                                        </CardContent>
-                                    </Card>
-                                </div>
-
-                                <div className="flex flex-wrap items-center gap-2">
-                                    <p className="text-xs font-medium text-stone-600">Post-type comparison metric</p>
-                                    <Select
-                                        value={postGrowthMetricKey}
-                                        onValueChange={(value) =>
-                                            setPostGrowthMetricKey(
-                                                value as (typeof POST_TYPE_GROWTH_METRIC_OPTIONS)[number]['value'],
-                                            )
-                                        }
-                                    >
-                                        <SelectTrigger className="w-[220px]">
-                                            <SelectValue />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            {POST_TYPE_GROWTH_METRIC_OPTIONS.map((option) => (
-                                                <SelectItem key={option.value} value={option.value}>
-                                                    {option.label}
-                                                </SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
+                                <div className="flex items-center justify-between">
+                                    <h2 className="flex items-center gap-1.5 text-sm font-medium text-stone-700">
+                                        <GripVertical className="h-3.5 w-3.5 text-stone-400" />
+                                        Drag post widgets to rearrange
+                                    </h2>
+                                    <Sheet open={postWidgetSheetOpen} onOpenChange={setPostWidgetSheetOpen}>
+                                        <SheetTrigger asChild>
+                                            <Button variant="outline" size="sm" className="text-xs">
+                                                <Plus className="mr-1 h-3 w-3" />
+                                                Add Widget
+                                            </Button>
+                                        </SheetTrigger>
+                                        <SheetContent className="overflow-hidden">
+                                            <SheetHeader>
+                                                <SheetTitle>Instagram Post Widgets</SheetTitle>
+                                            </SheetHeader>
+                                            <div className="mt-4 flex-1 min-h-0 overflow-y-auto px-2">
+                                                <div className="grid grid-cols-1 gap-3 pb-1">
+                                                    {availablePostWidgets.length === 0 ? (
+                                                        <p className="text-sm text-stone-500">
+                                                            Post widget options will appear once post data is available.
+                                                        </p>
+                                                    ) : (
+                                                        availablePostWidgets.map((widget) => (
+                                                            <button
+                                                                key={widget.id}
+                                                                type="button"
+                                                                onClick={() => addPostWidget(widget.id)}
+                                                                className="w-full rounded-xl border border-stone-200 bg-white p-3 text-left shadow-sm transition-all hover:border-violet-200 hover:shadow"
+                                                            >
+                                                                <div className="flex items-start justify-between gap-2">
+                                                                    <div>
+                                                                        <p className="text-sm font-medium text-stone-800">
+                                                                            {widget.title}
+                                                                        </p>
+                                                                        <p className="mt-1 text-xs text-stone-500">
+                                                                            {widget.description}
+                                                                        </p>
+                                                                    </div>
+                                                                    <Badge variant="outline" className="text-[10px]">
+                                                                        {widget.kind.replace(/-/g, ' ')}
+                                                                    </Badge>
+                                                                </div>
+                                                                {renderWidgetPickerPreview(widget)}
+                                                            </button>
+                                                        ))
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </SheetContent>
+                                    </Sheet>
                                 </div>
 
                                 <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-                                    <Card className="border-stone-200">
-                                        <CardHeader className="pb-2">
-                                            <CardTitle className="text-sm text-stone-800">
-                                                Post Type {selectedPostGrowthMetricLabel} Growth Over Time
-                                            </CardTitle>
-                                            <CardDescription className="text-xs">
-                                                Cumulative {selectedPostGrowthMetricLabel.toLowerCase()} trend by top post types.
-                                            </CardDescription>
-                                        </CardHeader>
-                                        <CardContent>
-                                            {postTypeGrowthSeries.data.length === 0 ? (
-                                                <p className="text-xs text-stone-400">
-                                                    Not enough publish-time data for post-type growth comparison.
-                                                </p>
-                                            ) : (
-                                                <div className="h-[260px]">
-                                                    <ResponsiveContainer width="100%" height="100%">
-                                                        <LineChart data={postTypeGrowthSeries.data}>
-                                                            <CartesianGrid strokeDasharray="3 3" stroke="#E7E5E4" />
-                                                            <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#78716C' }} />
-                                                            <YAxis tick={{ fontSize: 10, fill: '#78716C' }} />
-                                                            <Tooltip />
-                                                            <Legend wrapperStyle={{ fontSize: 11 }} />
-                                                            {postTypeGrowthSeries.types.map((type, index) => (
-                                                                <Line
-                                                                    key={type}
-                                                                    type="monotone"
-                                                                    dataKey={type}
-                                                                    stroke={PIE_COLORS[index % PIE_COLORS.length]}
-                                                                    strokeWidth={2}
-                                                                    dot={false}
-                                                                />
-                                                            ))}
-                                                        </LineChart>
-                                                    </ResponsiveContainer>
+                                    {activePostWidgets.length === 0 ? (
+                                        <Card className="col-span-full">
+                                            <CardContent className="py-10 text-center text-sm text-stone-500">
+                                                No post widgets added. Use &ldquo;Add Widget&rdquo; to customize post analytics.
+                                            </CardContent>
+                                        </Card>
+                                    ) : (
+                                        activePostWidgets.map(({ template, instance }) => (
+                                            <Card
+                                                key={instance.instanceId}
+                                                draggable
+                                                onDragStart={(event) => handlePostWidgetDragStart(event, instance.instanceId)}
+                                                onDragEnd={handlePostWidgetDragEnd}
+                                                onDragOver={(event) => handlePostWidgetDragOver(event, instance.instanceId)}
+                                                onDragLeave={handlePostWidgetDragLeave}
+                                                onDrop={(event) => handlePostWidgetDrop(event, instance.instanceId)}
+                                                className={cn(
+                                                    'relative cursor-move border-stone-200 transition-colors',
+                                                    postWidgetDragOverId === instance.instanceId &&
+                                                        'border-violet-400 bg-violet-50/50',
+                                                )}
+                                            >
+                                                <div className="absolute right-2 top-2 flex items-center gap-1">
+                                                    <div className="rounded-full p-1 text-stone-400" aria-hidden>
+                                                        <GripVertical className="h-3.5 w-3.5" />
+                                                    </div>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => removePostWidget(instance.instanceId)}
+                                                        className="rounded-full p-1 text-stone-400 transition-colors hover:bg-red-50 hover:text-red-500"
+                                                        aria-label={`Remove ${template.title}`}
+                                                    >
+                                                        <X className="h-3.5 w-3.5" />
+                                                    </button>
                                                 </div>
-                                            )}
-                                        </CardContent>
-                                    </Card>
-
-                                    <Card className="border-stone-200">
-                                        <CardHeader className="pb-2">
-                                            <CardTitle className="text-sm text-stone-800">
-                                                Post Type {selectedPostGrowthMetricLabel} Totals
-                                            </CardTitle>
-                                            <CardDescription className="text-xs">
-                                                Ranking of post types for the selected metric in the active date window.
-                                            </CardDescription>
-                                        </CardHeader>
-                                        <CardContent>
-                                            {postTypeMetricTotals.length === 0 ? (
-                                                <p className="text-xs text-stone-400">No post-type totals available.</p>
-                                            ) : (
-                                                <div className="h-[260px]">
-                                                    <ResponsiveContainer width="100%" height="100%">
-                                                        <BarChart data={postTypeMetricTotals.slice(0, 8)}>
-                                                            <CartesianGrid strokeDasharray="3 3" stroke="#E7E5E4" />
-                                                            <XAxis dataKey="type" tick={{ fontSize: 10, fill: '#78716C' }} />
-                                                            <YAxis tick={{ fontSize: 10, fill: '#78716C' }} />
-                                                            <Tooltip />
-                                                            <Bar dataKey="total" fill="#7C3AED" radius={[6, 6, 0, 0]} />
-                                                        </BarChart>
-                                                    </ResponsiveContainer>
-                                                </div>
-                                            )}
-                                        </CardContent>
-                                    </Card>
-
-                                    <Card className="border-stone-200">
-                                        <CardHeader className="pb-2">
-                                            <CardTitle className="text-sm text-stone-800">Post Type Distribution</CardTitle>
-                                            <CardDescription className="text-xs">
-                                                Imported post count split by post type.
-                                            </CardDescription>
-                                        </CardHeader>
-                                        <CardContent>
-                                            {postTypeDistribution.length === 0 ? (
-                                                <p className="text-xs text-stone-400">No post type distribution data available.</p>
-                                            ) : (
-                                                <div className="h-[240px]">
-                                                    <ResponsiveContainer width="100%" height="100%">
-                                                        <PieChart>
-                                                            <Pie
-                                                                data={postTypeDistribution}
-                                                                dataKey="count"
-                                                                nameKey="type"
-                                                                cx="50%"
-                                                                cy="50%"
-                                                                innerRadius={45}
-                                                                outerRadius={85}
-                                                                labelLine={false}
-                                                            >
-                                                                {postTypeDistribution.map((item, index) => (
-                                                                    <Cell
-                                                                        key={`${item.type}-${index}`}
-                                                                        fill={PIE_COLORS[index % PIE_COLORS.length]}
-                                                                    />
-                                                                ))}
-                                                            </Pie>
-                                                            <Tooltip />
-                                                        </PieChart>
-                                                    </ResponsiveContainer>
-                                                </div>
-                                            )}
-                                        </CardContent>
-                                    </Card>
-
-                                    <Card className="border-stone-200">
-                                        <CardHeader className="pb-2">
-                                            <CardTitle className="text-sm text-stone-800">Top Posts by Interactions</CardTitle>
-                                            <CardDescription className="text-xs">
-                                                Highest performing individual posts in the active date window.
-                                            </CardDescription>
-                                        </CardHeader>
-                                        <CardContent>
-                                            {topPostsByInteractions.length === 0 ? (
-                                                <p className="text-xs text-stone-400">
-                                                    No interaction data available for posts.
-                                                </p>
-                                            ) : (
-                                                <div className="space-y-2">
-                                                    {topPostsByInteractions.slice(0, 6).map((post) => (
-                                                        <div
-                                                            key={post.postId}
-                                                            className="rounded-md border border-stone-100 bg-stone-50 px-3 py-2"
-                                                        >
-                                                            <p className="truncate text-xs font-medium text-stone-800">
-                                                                {post.title}
-                                                            </p>
-                                                            <p className="mt-0.5 text-[11px] text-stone-500">
-                                                                {normalizePostTypeLabel(post.postType)} ·{' '}
-                                                                {(post.metrics.total_interactions || 0).toLocaleString()}{' '}
-                                                                interactions
-                                                            </p>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            )}
-                                        </CardContent>
-                                    </Card>
+                                                <CardHeader className="pb-2 pr-16">
+                                                    <CardTitle className="text-sm text-stone-800">{template.title}</CardTitle>
+                                                    <CardDescription className="text-xs">{template.description}</CardDescription>
+                                                </CardHeader>
+                                                <CardContent>{renderWidget(template, instance)}</CardContent>
+                                            </Card>
+                                        ))
+                                    )}
                                 </div>
                             </>
                         )

@@ -17,6 +17,7 @@ export interface ManualUploadResult {
   ig_user_id?: string;
   fb_user_id?: string;
   processed_files?: number;
+  processed_file_names?: string[];
   touched_dates?: number;
   created_entries?: number;
   updated_entries?: number;
@@ -74,11 +75,10 @@ export async function uploadManualInsights({
   const formData = new FormData();
 
   if (platform === 'insta' && instagramScope === 'posts') {
-    const postCsv = files[0];
-    if (!postCsv) {
-      throw new Error('Please choose a post CSV file to upload.');
+    if (files.length === 0) {
+      throw new Error('Please choose one or more post CSV files to upload.');
     }
-    formData.append('posts_csv', postCsv);
+    files.forEach((file) => formData.append('posts_csv', file));
   } else if (mode === 'csv') {
     files.forEach((file) => formData.append('files', file));
   } else {
@@ -115,4 +115,92 @@ export async function uploadManualInsights({
   }
 
   return payload as ManualUploadResult;
+}
+
+export interface InstagramDashboardLayoutWidget {
+  instance_id: string;
+  widget_id: string;
+  config?: Record<string, string | number | boolean | null>;
+}
+
+export interface InstagramDashboardLayoutPayload {
+  ig_user_id: string;
+  dashboard_user_id: string;
+  active_widgets: InstagramDashboardLayoutWidget[];
+  updated_at?: string | null;
+}
+
+export async function fetchInstagramDashboardLayout(
+  igUserId: string,
+  dashboardUserId?: string,
+): Promise<InstagramDashboardLayoutPayload> {
+  const normalizedIgUserId = igUserId.trim() || DEFAULT_MANUAL_ACCOUNT_ID;
+  const query = dashboardUserId?.trim()
+    ? `?dashboard_user_id=${encodeURIComponent(dashboardUserId.trim())}`
+    : '';
+  const response = await fetch(
+    `${BASE_URL}/manual/insta/layout/${encodeURIComponent(normalizedIgUserId)}${query}`,
+    { cache: 'no-store' },
+  );
+
+  let payload: unknown = null;
+  try {
+    payload = await response.json();
+  } catch {
+    payload = null;
+  }
+
+  if (!response.ok) {
+    const detail =
+      payload && typeof payload === 'object' && 'detail' in payload
+        ? (payload as { detail: unknown }).detail
+        : payload;
+    throw new Error(stringifyDetail(detail) || `Layout fetch failed (${response.status}).`);
+  }
+
+  if (!payload || typeof payload !== 'object') {
+    throw new Error('Layout fetch completed but response payload was invalid.');
+  }
+
+  return payload as InstagramDashboardLayoutPayload;
+}
+
+export async function saveInstagramDashboardLayout(params: {
+  igUserId: string;
+  dashboardUserId?: string;
+  activeWidgets: InstagramDashboardLayoutWidget[];
+}): Promise<InstagramDashboardLayoutPayload> {
+  const normalizedIgUserId = params.igUserId.trim() || DEFAULT_MANUAL_ACCOUNT_ID;
+  const response = await fetch(
+    `${BASE_URL}/manual/insta/layout/${encodeURIComponent(normalizedIgUserId)}`,
+    {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        dashboard_user_id: params.dashboardUserId?.trim() || undefined,
+        active_widgets: params.activeWidgets,
+      }),
+    },
+  );
+
+  let payload: unknown = null;
+  try {
+    payload = await response.json();
+  } catch {
+    payload = null;
+  }
+
+  if (!response.ok) {
+    const detail =
+      payload && typeof payload === 'object' && 'detail' in payload
+        ? (payload as { detail: unknown }).detail
+        : payload;
+    throw new Error(stringifyDetail(detail) || `Layout save failed (${response.status}).`);
+  }
+
+  if (!payload || typeof payload !== 'object') {
+    throw new Error('Layout save completed but response payload was invalid.');
+  }
+
+  return payload as InstagramDashboardLayoutPayload;
 }

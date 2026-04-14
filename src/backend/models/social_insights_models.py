@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -42,3 +42,58 @@ class InstagramPostInsightDocument(BaseModel):
         if not normalized:
             raise ValueError("Value cannot be empty.")
         return normalized
+
+
+class InstagramDashboardWidgetInstance(BaseModel):
+    """Stored widget instance for Instagram dashboard layout persistence."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    instance_id: str = Field(..., description="Unique dashboard widget instance ID.")
+    widget_id: str = Field(..., description="Widget template ID.")
+    config: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Widget-specific configuration payload.",
+    )
+
+    @field_validator("instance_id", "widget_id")
+    @classmethod
+    def _validate_non_empty_widget_fields(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("Value cannot be empty.")
+        return normalized
+
+
+class InstagramDashboardLayoutUpsertRequest(BaseModel):
+    """Request body for saving Instagram dashboard layout for a user."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    dashboard_user_id: str | None = Field(
+        default=None,
+        description="Authenticated dashboard user ID. Falls back to ig_user_id when omitted.",
+    )
+    active_widgets: list[InstagramDashboardWidgetInstance] = Field(
+        default_factory=list,
+        description="Ordered list of widget instances currently active in the dashboard.",
+    )
+
+    @field_validator("dashboard_user_id")
+    @classmethod
+    def _normalize_dashboard_user_id(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
+
+class InstagramDashboardLayoutResponse(BaseModel):
+    """Instagram dashboard layout payload returned by layout APIs."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    ig_user_id: str
+    dashboard_user_id: str
+    active_widgets: list[InstagramDashboardWidgetInstance] = Field(default_factory=list)
+    updated_at: datetime | None = Field(default=None, description="Last layout update timestamp in UTC.")

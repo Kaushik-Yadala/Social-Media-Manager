@@ -12,11 +12,16 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 
 from fastapi import HTTPException, UploadFile
+from pydantic import ValidationError
 from pymongo.errors import PyMongoError
 
 from core.config import settings
 from core.database import db
-from models.social_insights_models import InstagramPostInsightDocument
+from models.social_insights_models import (
+    InstagramDashboardLayoutResponse,
+    InstagramDashboardWidgetInstance,
+    InstagramPostInsightDocument,
+)
 
 ENCODING_CANDIDATES = (
     "utf-8-sig",
@@ -201,6 +206,24 @@ async def _get_instagram_posts_collection():
         await collection.create_index("post_id", unique=True, name="instagram_post_id_unique")
         await collection.create_index("ig_user_id", name="instagram_post_ig_user_id")
         await collection.create_index("publish_time", name="instagram_post_publish_time")
+    except PyMongoError as exc:
+        raise HTTPException(status_code=500, detail=f"Database index setup failed: {exc}") from exc
+
+    return collection
+
+
+async def _get_instagram_layout_collection():
+    if db.client is None:
+        raise HTTPException(status_code=503, detail="Database is not initialized.")
+
+    collection = db.client[settings.database_name][settings.instagram_dashboard_layout_collection_name]
+    try:
+        await collection.create_index(
+            [("ig_user_id", 1), ("dashboard_user_id", 1)],
+            unique=True,
+            name="instagram_dashboard_layout_user_unique",
+        )
+        await collection.create_index("updated_at", name="instagram_dashboard_layout_updated_at")
     except PyMongoError as exc:
         raise HTTPException(status_code=500, detail=f"Database index setup failed: {exc}") from exc
 
@@ -768,6 +791,61 @@ def _as_utc_iso(value: datetime | None) -> str | None:
     return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
+def _normalize_non_empty_identifier(value: str, field_name: str) -> str:
+    normalized = value.strip()
+    if not normalized:
+        raise HTTPException(status_code=400, detail=f"{field_name} cannot be empty.")
+    return normalized
+
+
+def _resolve_dashboard_user_id(ig_user_id: str, dashboard_user_id: str | None) -> str:
+    normalized_dashboard_user_id = (dashboard_user_id or "").strip()
+    if normalized_dashboard_user_id:
+        return normalized_dashboard_user_id
+    return ig_user_id
+
+
+def _serialize_layout_widgets(
+    widgets: list[dict[str, Any]] | list[InstagramDashboardWidgetInstance],
+) -> list[dict[str, Any]]:
+    normalized_widgets: list[dict[str, Any]] = []
+    for index, widget in enumerate(widgets):
+        try:
+            validated = (
+                widget
+                if isinstance(widget, InstagramDashboardWidgetInstance)
+                else InstagramDashboardWidgetInstance.model_validate(widget)
+            )
+        except ValidationError as exc:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Stored dashboard layout is invalid at widget index {index}.",
+            ) from exc
+        normalized_widgets.append(validated.model_dump(mode="python"))
+    return normalized_widgets
+
+
+def _build_layout_response(
+    *,
+    ig_user_id: str,
+    dashboard_user_id: str,
+    active_widgets: list[dict[str, Any]] | list[InstagramDashboardWidgetInstance],
+    updated_at: datetime | None,
+) -> dict[str, Any]:
+    payload = InstagramDashboardLayoutResponse(
+        ig_user_id=ig_user_id,
+        dashboard_user_id=dashboard_user_id,
+        active_widgets=[
+            InstagramDashboardWidgetInstance.model_validate(widget)
+            for widget in _serialize_layout_widgets(active_widgets)
+        ],
+        updated_at=updated_at,
+    )
+    response = payload.model_dump(mode="python")
+    response["updated_at"] = _as_utc_iso(updated_at)
+    return response
+
+
 def _postwise_response_entry(
     *,
     post_document: dict[str, Any],
@@ -1194,33 +1272,49 @@ async def import_instagram_folder(ig_user_id: str, folder_archive: UploadFile) -
 
 async def import_instagram_posts_csv(
     ig_user_id: str,
-    posts_csv: UploadFile,
+    posts_csv: list[UploadFile],
 ) -> dict[str, Any]:
-    file_name = posts_csv.filename or "posts.csv"
-    file_content = await posts_csv.read()
-    if not file_content:
-        raise HTTPException(status_code=400, detail="Uploaded post CSV is empty.")
+    payloads = await _collect_upload_payloads(posts_csv)
+    if not payloads:
+        raise HTTPException(status_code=400, detail="No non-empty post CSV files were uploaded.")
 
-    if not file_name.lower().endswith(".csv"):
-        raise HTTPException(status_code=400, detail="Post upload must be a CSV file.")
+    documents_by_post_id: dict[str, InstagramPostInsightDocument] = {}
+    all_metric_keys: set[str] = set()
+    processed_file_names: list[str] = []
 
-    try:
-        documents, metric_keys = _parse_instagram_posts_csv(file_name, file_content, ig_user_id)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    for file_name, file_content in payloads:
+        if not file_name.lower().endswith(".csv"):
+            raise HTTPException(status_code=400, detail="Post upload accepts only CSV files.")
 
-    created_entries, updated_entries = await _upsert_instagram_posts(documents)
+        try:
+            documents, metric_keys = _parse_instagram_posts_csv(file_name, file_content, ig_user_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    return {
+        processed_file_names.append(file_name)
+        all_metric_keys.update(metric_keys)
+        for document in documents:
+            documents_by_post_id[document.post_id] = document
+
+    merged_documents = list(documents_by_post_id.values())
+    created_entries, updated_entries = await _upsert_instagram_posts(merged_documents)
+
+    response_payload: dict[str, Any] = {
         "message": "Post CSV import completed.",
-        "source": "uploaded_post_csv",
+        "source": "uploaded_post_csv_files",
         "ig_user_id": ig_user_id,
-        "processed_file": file_name,
-        "processed_posts": len(documents),
+        "processed_files": len(processed_file_names),
+        "processed_file_names": processed_file_names,
+        "processed_posts": len(merged_documents),
         "created_entries": created_entries,
         "updated_entries": updated_entries,
-        "metric_keys": metric_keys,
+        "metric_keys": sorted(all_metric_keys),
     }
+
+    if len(processed_file_names) == 1:
+        response_payload["processed_file"] = processed_file_names[0]
+
+    return response_payload
 
 
 async def get_instagram_post_insights(
@@ -1296,6 +1390,83 @@ async def get_instagram_post_insights(
             for post_document in post_documents
         ]
     }
+
+
+async def get_instagram_dashboard_layout(
+    ig_user_id: str,
+    dashboard_user_id: str | None = None,
+) -> dict[str, Any]:
+    normalized_ig_user_id = _normalize_non_empty_identifier(ig_user_id, "ig_user_id")
+    resolved_dashboard_user_id = _resolve_dashboard_user_id(normalized_ig_user_id, dashboard_user_id)
+
+    collection = await _get_instagram_layout_collection()
+    try:
+        document = await collection.find_one(
+            {
+                "ig_user_id": normalized_ig_user_id,
+                "dashboard_user_id": resolved_dashboard_user_id,
+            }
+        )
+    except PyMongoError as exc:
+        raise HTTPException(status_code=500, detail=f"Database query failed: {exc}") from exc
+
+    if not document:
+        return _build_layout_response(
+            ig_user_id=normalized_ig_user_id,
+            dashboard_user_id=resolved_dashboard_user_id,
+            active_widgets=[],
+            updated_at=None,
+        )
+
+    stored_widgets = document.get("active_widgets")
+    normalized_widgets = stored_widgets if isinstance(stored_widgets, list) else []
+    updated_at = document.get("updated_at")
+    normalized_updated_at = updated_at if isinstance(updated_at, datetime) else None
+
+    return _build_layout_response(
+        ig_user_id=normalized_ig_user_id,
+        dashboard_user_id=resolved_dashboard_user_id,
+        active_widgets=normalized_widgets,
+        updated_at=normalized_updated_at,
+    )
+
+
+async def save_instagram_dashboard_layout(
+    ig_user_id: str,
+    dashboard_user_id: str | None,
+    active_widgets: list[InstagramDashboardWidgetInstance],
+) -> dict[str, Any]:
+    normalized_ig_user_id = _normalize_non_empty_identifier(ig_user_id, "ig_user_id")
+    resolved_dashboard_user_id = _resolve_dashboard_user_id(normalized_ig_user_id, dashboard_user_id)
+    normalized_widgets = _serialize_layout_widgets(active_widgets)
+    updated_at = datetime.now(timezone.utc)
+
+    collection = await _get_instagram_layout_collection()
+    try:
+        await collection.update_one(
+            {
+                "ig_user_id": normalized_ig_user_id,
+                "dashboard_user_id": resolved_dashboard_user_id,
+            },
+            {
+                "$set": {
+                    "ig_user_id": normalized_ig_user_id,
+                    "dashboard_user_id": resolved_dashboard_user_id,
+                    "active_widgets": normalized_widgets,
+                    "updated_at": updated_at,
+                }
+            },
+            upsert=True,
+        )
+    except PyMongoError as exc:
+        raise HTTPException(status_code=500, detail=f"Database write failed: {exc}") from exc
+
+    return _build_layout_response(
+        ig_user_id=normalized_ig_user_id,
+        dashboard_user_id=resolved_dashboard_user_id,
+        active_widgets=normalized_widgets,
+        updated_at=updated_at,
+    )
 
 
 async def get_facebook_insights(

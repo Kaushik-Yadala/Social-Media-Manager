@@ -6,6 +6,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, File, Query, UploadFile
 
+from models.social_insights_models import InstagramDashboardLayoutUpsertRequest
 import services.social_insights_service as social_insights
 
 router = APIRouter(prefix="/manual", tags=["Instagram and Facebook Insights"])
@@ -61,15 +62,41 @@ async def import_instagram_folder_upload(
     return await social_insights.import_instagram_folder(ig_user_id, folder_archive)
 
 
+@router.get("/insta/layout/{ig_user_id}")
+async def get_instagram_dashboard_layout(
+    ig_user_id: str,
+    dashboard_user_id: str | None = Query(
+        None,
+        description="Dashboard user ID used to scope persisted widget layout.",
+    ),
+):
+    return await social_insights.get_instagram_dashboard_layout(
+        ig_user_id=ig_user_id,
+        dashboard_user_id=dashboard_user_id,
+    )
+
+
+@router.put("/insta/layout/{ig_user_id}")
+async def save_instagram_dashboard_layout(
+    ig_user_id: str,
+    payload: InstagramDashboardLayoutUpsertRequest,
+):
+    return await social_insights.save_instagram_dashboard_layout(
+        ig_user_id=ig_user_id,
+        dashboard_user_id=payload.dashboard_user_id,
+        active_widgets=payload.active_widgets,
+    )
+
+
 @router.post("/insta/posts/{ig_user_id}/csvs")
 async def import_instagram_posts_csv_upload(
     ig_user_id: str,
     posts_csv: Annotated[
-        UploadFile,
+        list[UploadFile],
         File(
             ...,
-            description="Instagram post-level CSV export (for example posts.csv).",
-            json_schema_extra={"type": "string", "format": "binary"},
+            description="One or more Instagram post-level CSV exports (for example posts.csv).",
+            json_schema_extra={"items": {"type": "string", "format": "binary"}},
         ),
     ],
 ):

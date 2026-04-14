@@ -107,6 +107,85 @@ class TestInstagramInsightsRoutes:
         assert args[0] == "test_user"
         assert args[1].filename == "channelwise.zip"
 
+    def test_get_instagram_layout_route_calls_service(self):
+        expected_payload = {
+            "ig_user_id": "ClubArtizen",
+            "dashboard_user_id": "dashboard-user-1",
+            "active_widgets": [
+                {
+                    "instance_id": "top-posts-1",
+                    "widget_id": "top-posts",
+                    "config": {"postMetricKey": "views"},
+                }
+            ],
+            "updated_at": "2026-04-14T00:00:00Z",
+        }
+        with patch(
+            "routes.social_insights_routes.social_insights.get_instagram_dashboard_layout",
+            new=AsyncMock(return_value=expected_payload),
+        ) as mocked_service:
+            response = client.get(
+                "/manual/insta/layout/ClubArtizen",
+                params={"dashboard_user_id": "dashboard-user-1"},
+            )
+
+        assert response.status_code == 200
+        assert response.json() == expected_payload
+        mocked_service.assert_awaited_once_with(
+            ig_user_id="ClubArtizen",
+            dashboard_user_id="dashboard-user-1",
+        )
+
+    def test_save_instagram_layout_route_calls_service(self):
+        expected_payload = {
+            "ig_user_id": "ClubArtizen",
+            "dashboard_user_id": "dashboard-user-1",
+            "active_widgets": [
+                {
+                    "instance_id": "dynamic-metric-line-1",
+                    "widget_id": "dynamic-metric-line",
+                    "config": {"metricKey": "reach"},
+                },
+                {
+                    "instance_id": "top-posts-1",
+                    "widget_id": "top-posts",
+                    "config": {"postMetricKey": "views"},
+                },
+            ],
+            "updated_at": "2026-04-14T00:10:00Z",
+        }
+        with patch(
+            "routes.social_insights_routes.social_insights.save_instagram_dashboard_layout",
+            new=AsyncMock(return_value=expected_payload),
+        ) as mocked_service:
+            response = client.put(
+                "/manual/insta/layout/ClubArtizen",
+                json={
+                    "dashboard_user_id": "dashboard-user-1",
+                    "active_widgets": [
+                        {
+                            "instance_id": "dynamic-metric-line-1",
+                            "widget_id": "dynamic-metric-line",
+                            "config": {"metricKey": "reach"},
+                        },
+                        {
+                            "instance_id": "top-posts-1",
+                            "widget_id": "top-posts",
+                            "config": {"postMetricKey": "views"},
+                        },
+                    ],
+                },
+            )
+
+        assert response.status_code == 200
+        assert response.json() == expected_payload
+        kwargs = mocked_service.await_args.kwargs
+        assert kwargs["ig_user_id"] == "ClubArtizen"
+        assert kwargs["dashboard_user_id"] == "dashboard-user-1"
+        assert len(kwargs["active_widgets"]) == 2
+        assert kwargs["active_widgets"][0].instance_id == "dynamic-metric-line-1"
+        assert kwargs["active_widgets"][1].widget_id == "top-posts"
+
     def test_post_csv_import_route_calls_service(self):
         expected_payload = {"message": "Post CSV import completed."}
         with patch(
@@ -115,23 +194,38 @@ class TestInstagramInsightsRoutes:
         ) as mocked_service:
             response = client.post(
                 "/manual/insta/posts/test_user/csvs",
-                files={
-                    "posts_csv": (
-                        "posts.csv",
+                files=[
+                    (
+                        "posts_csv",
                         (
-                            b"Post ID,Account ID,Publish time,Post type,Date,Views,Likes,Shares,Comments,Saves,Reach,Follows\n"
-                            b"1801,1784,03/27/2026 06:08,IG image,Lifetime,160,5,3,0,0,45,0\n"
+                            "posts-1.csv",
+                            (
+                                b"Post ID,Account ID,Publish time,Post type,Date,Views,Likes,Shares,Comments,Saves,Reach,Follows\n"
+                                b"1801,1784,03/27/2026 06:08,IG image,Lifetime,160,5,3,0,0,45,0\n"
+                            ),
+                            "text/csv",
                         ),
-                        "text/csv",
-                    )
-                },
+                    ),
+                    (
+                        "posts_csv",
+                        (
+                            "posts-2.csv",
+                            (
+                                b"Post ID,Account ID,Publish time,Post type,Date,Views,Likes,Shares,Comments,Saves,Reach,Follows\n"
+                                b"1802,1784,03/28/2026 06:08,IG image,Lifetime,120,7,1,1,1,40,0\n"
+                            ),
+                            "text/csv",
+                        ),
+                    ),
+                ],
             )
 
         assert response.status_code == 200
         assert response.json() == expected_payload
         args = mocked_service.await_args.args
         assert args[0] == "test_user"
-        assert args[1].filename == "posts.csv"
+        assert len(args[1]) == 2
+        assert [uploaded.filename for uploaded in args[1]] == ["posts-1.csv", "posts-2.csv"]
 
     def test_post_insights_route_calls_service(self):
         expected_payload = {"data": [{"name": "views", "values": [{"value": 160}]}]}

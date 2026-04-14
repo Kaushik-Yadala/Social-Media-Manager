@@ -29,6 +29,7 @@ class Settings(BaseSettings):
     database_name: str = "club_artizen_analytics"
     instagram_collection_name: str = "instagram_insights_data"
     instagram_posts_collection_name: str = "instagram_post_insights_data"
+    instagram_dashboard_layout_collection_name: str = "instagram_dashboard_layouts"
     facebook_collection_name: str = "facebook_insights_data"
 
     # Security / JWT

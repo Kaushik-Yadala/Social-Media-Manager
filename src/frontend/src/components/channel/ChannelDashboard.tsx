@@ -601,32 +601,34 @@ export function ChannelDashboard({ channel, channelName, channelColor, channelIc
                             <SheetTrigger asChild>
                                 <Button variant="outline" size="sm" className="text-xs"><Plus className="mr-1 h-3 w-3" /> Add Widget</Button>
                             </SheetTrigger>
-                            <SheetContent>
+                            <SheetContent className="overflow-hidden">
                                 <SheetHeader><SheetTitle>Widget Catalog — {channelName}</SheetTitle></SheetHeader>
-                                <div className="mt-4 space-y-2">
-                                    {widgets.map(w => {
-                                        const isActive = !!activeWidgets.find(aw => aw.id === w.id);
-                                        return (
-                                            <button
-                                                key={w.id}
-                                                onClick={() => addWidget(w)}
-                                                disabled={isActive}
-                                                className="w-full text-left p-3 rounded-lg bg-stone-50 hover:bg-stone-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                                            >
-                                                <div className="flex items-center justify-between">
-                                                    <div>
-                                                        <p className="text-sm font-medium text-stone-800">{w.name}</p>
-                                                        <p className="text-[11px] text-stone-400 mt-0.5">{w.description}</p>
+                                <div className="mt-4 flex-1 min-h-0 overflow-y-auto">
+                                    <div className="space-y-2 pr-1">
+                                        {widgets.map(w => {
+                                            const isActive = !!activeWidgets.find(aw => aw.id === w.id);
+                                            return (
+                                                <button
+                                                    key={w.id}
+                                                    onClick={() => addWidget(w)}
+                                                    disabled={isActive}
+                                                    className="w-full text-left p-3 rounded-lg bg-stone-50 hover:bg-stone-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                                >
+                                                    <div className="flex items-center justify-between">
+                                                        <div>
+                                                            <p className="text-sm font-medium text-stone-800">{w.name}</p>
+                                                            <p className="text-[11px] text-stone-400 mt-0.5">{w.description}</p>
+                                                        </div>
+                                                        <div className="flex items-center gap-2">
+                                                            <Badge variant="outline" className="text-[9px] shrink-0">{w.chartType}</Badge>
+                                                            {isActive && <Badge className="text-[9px] bg-emerald-100 text-emerald-700">Added</Badge>}
+                                                        </div>
                                                     </div>
-                                                    <div className="flex items-center gap-2">
-                                                        <Badge variant="outline" className="text-[9px] shrink-0">{w.chartType}</Badge>
-                                                        {isActive && <Badge className="text-[9px] bg-emerald-100 text-emerald-700">Added</Badge>}
-                                                    </div>
-                                                </div>
-                                                {w.apiMetric && <p className="text-[9px] text-stone-300 mt-1 font-mono">API: {w.apiMetric}</p>}
-                                            </button>
-                                        );
-                                    })}
+                                                    {w.apiMetric && <p className="text-[9px] text-stone-300 mt-1 font-mono">API: {w.apiMetric}</p>}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
                                 </div>
                             </SheetContent>
                         </Sheet>

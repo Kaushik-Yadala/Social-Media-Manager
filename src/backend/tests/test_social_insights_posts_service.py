@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
 from fastapi import HTTPException
 
+from models.social_insights_models import InstagramDashboardWidgetInstance
 import services.social_insights_service as social_insights
 
 
@@ -44,6 +46,67 @@ def test_parse_instagram_posts_csv_extracts_post_metrics():
     assert documents[0].metrics["saved"] == 4
     assert documents[0].metrics["total_interactions"] == 14
     assert "total_interactions" in metric_keys
+
+
+@pytest.mark.asyncio
+async def test_import_instagram_posts_csv_supports_multiple_files():
+    class _FakeUploadFile:
+        def __init__(self, filename: str, content: bytes):
+            self.filename = filename
+            self._content = content
+
+        async def read(self) -> bytes:
+            return self._content
+
+    csv_one = (
+        b"Post ID,Account ID,Publish time,Post type,Date,Views,Likes,Shares,Comments,Saves,Reach,Follows\n"
+        b"1801,1784,03/27/2026 06:08,IG image,Lifetime,160,5,3,0,0,45,0\n"
+    )
+    csv_two = (
+        b"Post ID,Account ID,Publish time,Post type,Date,Views,Likes,Shares,Comments,Saves,Reach,Follows\n"
+        b"1802,1784,03/28/2026 06:08,IG image,Lifetime,120,7,1,1,1,40,0\n"
+    )
+
+    with patch(
+        "services.social_insights_service._upsert_instagram_posts",
+        new=AsyncMock(return_value=(1, 1)),
+    ) as mocked_upsert:
+        payload = await social_insights.import_instagram_posts_csv(
+            "ClubArtizen",
+            [
+                _FakeUploadFile("posts-1.csv", csv_one),
+                _FakeUploadFile("posts-2.csv", csv_two),
+            ],
+        )
+
+    assert payload["source"] == "uploaded_post_csv_files"
+    assert payload["processed_files"] == 2
+    assert payload["processed_posts"] == 2
+    assert payload["processed_file_names"] == ["posts-1.csv", "posts-2.csv"]
+    assert "processed_file" not in payload
+
+    upsert_documents = mocked_upsert.await_args.args[0]
+    assert sorted(document.post_id for document in upsert_documents) == ["1801", "1802"]
+
+
+@pytest.mark.asyncio
+async def test_import_instagram_posts_csv_rejects_non_csv_file():
+    class _FakeUploadFile:
+        def __init__(self, filename: str, content: bytes):
+            self.filename = filename
+            self._content = content
+
+        async def read(self) -> bytes:
+            return self._content
+
+    with pytest.raises(HTTPException) as exc_info:
+        await social_insights.import_instagram_posts_csv(
+            "ClubArtizen",
+            [_FakeUploadFile("posts.zip", b"PK\x03\x04not-a-csv")],
+        )
+
+    assert exc_info.value.status_code == 400
+    assert "CSV" in str(exc_info.value.detail)
 
 
 @pytest.mark.asyncio
@@ -239,3 +302,113 @@ async def test_get_instagram_post_insights_rejects_unsupported_metrics():
 
     assert exc_info.value.status_code == 400
     assert "Unsupported metric" in str(exc_info.value.detail)
+
+
+@pytest.mark.asyncio
+async def test_get_instagram_dashboard_layout_returns_default_when_missing():
+    class _FakeCollection:
+        async def find_one(self, query):
+            assert query == {
+                "ig_user_id": "ClubArtizen",
+                "dashboard_user_id": "dashboard-user-1",
+            }
+            return None
+
+    with patch(
+        "services.social_insights_service._get_instagram_layout_collection",
+        new=AsyncMock(return_value=_FakeCollection()),
+    ):
+        payload = await social_insights.get_instagram_dashboard_layout(
+            ig_user_id="ClubArtizen",
+            dashboard_user_id="dashboard-user-1",
+        )
+
+    assert payload["ig_user_id"] == "ClubArtizen"
+    assert payload["dashboard_user_id"] == "dashboard-user-1"
+    assert payload["active_widgets"] == []
+    assert payload["updated_at"] is None
+
+
+@pytest.mark.asyncio
+async def test_get_instagram_dashboard_layout_returns_saved_widgets():
+    class _FakeCollection:
+        async def find_one(self, query):
+            assert query == {
+                "ig_user_id": "ClubArtizen",
+                "dashboard_user_id": "dashboard-user-1",
+            }
+            return {
+                "ig_user_id": "ClubArtizen",
+                "dashboard_user_id": "dashboard-user-1",
+                "active_widgets": [
+                    {
+                        "instance_id": "top-posts-1",
+                        "widget_id": "top-posts",
+                        "config": {"postMetricKey": "views"},
+                    }
+                ],
+                "updated_at": datetime(2026, 4, 14, 6, 0, tzinfo=timezone.utc),
+            }
+
+    with patch(
+        "services.social_insights_service._get_instagram_layout_collection",
+        new=AsyncMock(return_value=_FakeCollection()),
+    ):
+        payload = await social_insights.get_instagram_dashboard_layout(
+            ig_user_id="ClubArtizen",
+            dashboard_user_id="dashboard-user-1",
+        )
+
+    assert payload["active_widgets"][0]["instance_id"] == "top-posts-1"
+    assert payload["active_widgets"][0]["widget_id"] == "top-posts"
+    assert payload["updated_at"] == "2026-04-14T06:00:00Z"
+
+
+@pytest.mark.asyncio
+async def test_save_instagram_dashboard_layout_upserts_widgets():
+    class _FakeCollection:
+        def __init__(self):
+            self.captured_query: dict[str, Any] | None = None
+            self.captured_update: dict[str, Any] | None = None
+            self.captured_upsert: bool | None = None
+
+        async def update_one(self, query, update, upsert=False):
+            self.captured_query = query
+            self.captured_update = update
+            self.captured_upsert = upsert
+
+    fake_collection = _FakeCollection()
+    with patch(
+        "services.social_insights_service._get_instagram_layout_collection",
+        new=AsyncMock(return_value=fake_collection),
+    ):
+        payload = await social_insights.save_instagram_dashboard_layout(
+            ig_user_id="ClubArtizen",
+            dashboard_user_id="dashboard-user-1",
+            active_widgets=[
+                InstagramDashboardWidgetInstance(
+                    instance_id="metric-compare-1",
+                    widget_id="metric-scatter-compare",
+                    config={"xMetricKey": "views", "yMetricKey": "reach"},
+                ),
+                InstagramDashboardWidgetInstance(
+                    instance_id="top-posts-1",
+                    widget_id="top-posts",
+                    config={"postMetricKey": "likes"},
+                ),
+            ],
+        )
+
+    assert fake_collection.captured_query == {
+        "ig_user_id": "ClubArtizen",
+        "dashboard_user_id": "dashboard-user-1",
+    }
+    assert fake_collection.captured_upsert is True
+    assert fake_collection.captured_update is not None
+    stored_widgets = fake_collection.captured_update["$set"]["active_widgets"]
+    assert len(stored_widgets) == 2
+    assert stored_widgets[0]["widget_id"] == "metric-scatter-compare"
+    assert stored_widgets[1]["config"]["postMetricKey"] == "likes"
+    assert payload["dashboard_user_id"] == "dashboard-user-1"
+    assert len(payload["active_widgets"]) == 2
+    assert payload["updated_at"] is not None
