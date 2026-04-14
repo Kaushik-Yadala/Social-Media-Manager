@@ -158,6 +158,32 @@ async def get_facebook_insights(
     )
 
 
+@router.get("/facebook/layout/{fb_user_id}")
+async def get_facebook_dashboard_layout(
+    fb_user_id: str,
+    dashboard_user_id: str | None = Query(
+        None,
+        description="Dashboard user ID used to scope persisted widget layout.",
+    ),
+):
+    return await social_insights.get_facebook_dashboard_layout(
+        fb_user_id=fb_user_id,
+        dashboard_user_id=dashboard_user_id,
+    )
+
+
+@router.put("/facebook/layout/{fb_user_id}")
+async def save_facebook_dashboard_layout(
+    fb_user_id: str,
+    payload: InstagramDashboardLayoutUpsertRequest,
+):
+    return await social_insights.save_facebook_dashboard_layout(
+        fb_user_id=fb_user_id,
+        dashboard_user_id=payload.dashboard_user_id,
+        active_widgets=payload.active_widgets,
+    )
+
+
 @router.post("/facebook/csvs/{fb_user_id}")
 async def import_facebook_csv_uploads(
     fb_user_id: str,

@@ -31,6 +31,7 @@ class Settings(BaseSettings):
     instagram_posts_collection_name: str = "instagram_post_insights_data"
     instagram_dashboard_layout_collection_name: str = "instagram_dashboard_layouts"
     facebook_collection_name: str = "facebook_insights_data"
+    facebook_dashboard_layout_collection_name: str = "facebook_dashboard_layouts"
 
     # Security / JWT
     secret_key: str = "supersecretkey" # CHANGE IN PRODUCTION

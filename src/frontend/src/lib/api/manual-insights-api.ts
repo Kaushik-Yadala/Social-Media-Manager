@@ -204,3 +204,85 @@ export async function saveInstagramDashboardLayout(params: {
 
   return payload as InstagramDashboardLayoutPayload;
 }
+
+export interface FacebookDashboardLayoutPayload {
+  fb_user_id: string;
+  dashboard_user_id: string;
+  active_widgets: InstagramDashboardLayoutWidget[];
+  updated_at?: string | null;
+}
+
+export async function fetchFacebookDashboardLayout(
+  fbUserId: string,
+  dashboardUserId?: string,
+): Promise<FacebookDashboardLayoutPayload> {
+  const normalizedFbUserId = fbUserId.trim() || DEFAULT_MANUAL_ACCOUNT_ID;
+  const query = dashboardUserId?.trim()
+    ? `?dashboard_user_id=${encodeURIComponent(dashboardUserId.trim())}`
+    : '';
+  const response = await fetch(
+    `${BASE_URL}/manual/facebook/layout/${encodeURIComponent(normalizedFbUserId)}${query}`,
+    { cache: 'no-store' },
+  );
+
+  let payload: unknown = null;
+  try {
+    payload = await response.json();
+  } catch {
+    payload = null;
+  }
+
+  if (!response.ok) {
+    const detail =
+      payload && typeof payload === 'object' && 'detail' in payload
+        ? (payload as { detail: unknown }).detail
+        : payload;
+    throw new Error(stringifyDetail(detail) || `Layout fetch failed (${response.status}).`);
+  }
+
+  if (!payload || typeof payload !== 'object') {
+    throw new Error('Layout fetch completed but response payload was invalid.');
+  }
+
+  return payload as FacebookDashboardLayoutPayload;
+}
+
+export async function saveFacebookDashboardLayout(params: {
+  fbUserId: string;
+  dashboardUserId?: string;
+  activeWidgets: InstagramDashboardLayoutWidget[];
+}): Promise<FacebookDashboardLayoutPayload> {
+  const normalizedFbUserId = params.fbUserId.trim() || DEFAULT_MANUAL_ACCOUNT_ID;
+  const response = await fetch(
+    `${BASE_URL}/manual/facebook/layout/${encodeURIComponent(normalizedFbUserId)}`,
+    {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        dashboard_user_id: params.dashboardUserId?.trim() || undefined,
+        active_widgets: params.activeWidgets,
+      }),
+    },
+  );
+
+  let payload: unknown = null;
+  try {
+    payload = await response.json();
+  } catch {
+    payload = null;
+  }
+
+  if (!response.ok) {
+    const detail =
+      payload && typeof payload === 'object' && 'detail' in payload
+        ? (payload as { detail: unknown }).detail
+        : payload;
+    throw new Error(stringifyDetail(detail) || `Layout save failed (${response.status}).`);
+  }
+
+  if (!payload || typeof payload !== 'object') {
+    throw new Error('Layout save completed but response payload was invalid.');
+  }
+
+  return payload as FacebookDashboardLayoutPayload;
+}

@@ -18,6 +18,7 @@ from pymongo.errors import PyMongoError
 from core.config import settings
 from core.database import db
 from models.social_insights_models import (
+    FacebookDashboardLayoutResponse,
     InstagramDashboardLayoutResponse,
     InstagramDashboardWidgetInstance,
     InstagramPostInsightDocument,
@@ -224,6 +225,24 @@ async def _get_instagram_layout_collection():
             name="instagram_dashboard_layout_user_unique",
         )
         await collection.create_index("updated_at", name="instagram_dashboard_layout_updated_at")
+    except PyMongoError as exc:
+        raise HTTPException(status_code=500, detail=f"Database index setup failed: {exc}") from exc
+
+    return collection
+
+
+async def _get_facebook_layout_collection():
+    if db.client is None:
+        raise HTTPException(status_code=503, detail="Database is not initialized.")
+
+    collection = db.client[settings.database_name][settings.facebook_dashboard_layout_collection_name]
+    try:
+        await collection.create_index(
+            [("fb_user_id", 1), ("dashboard_user_id", 1)],
+            unique=True,
+            name="facebook_dashboard_layout_user_unique",
+        )
+        await collection.create_index("updated_at", name="facebook_dashboard_layout_updated_at")
     except PyMongoError as exc:
         raise HTTPException(status_code=500, detail=f"Database index setup failed: {exc}") from exc
 
@@ -834,6 +853,27 @@ def _build_layout_response(
 ) -> dict[str, Any]:
     payload = InstagramDashboardLayoutResponse(
         ig_user_id=ig_user_id,
+        dashboard_user_id=dashboard_user_id,
+        active_widgets=[
+            InstagramDashboardWidgetInstance.model_validate(widget)
+            for widget in _serialize_layout_widgets(active_widgets)
+        ],
+        updated_at=updated_at,
+    )
+    response = payload.model_dump(mode="python")
+    response["updated_at"] = _as_utc_iso(updated_at)
+    return response
+
+
+def _build_facebook_layout_response(
+    *,
+    fb_user_id: str,
+    dashboard_user_id: str,
+    active_widgets: list[dict[str, Any]] | list[InstagramDashboardWidgetInstance],
+    updated_at: datetime | None,
+) -> dict[str, Any]:
+    payload = FacebookDashboardLayoutResponse(
+        fb_user_id=fb_user_id,
         dashboard_user_id=dashboard_user_id,
         active_widgets=[
             InstagramDashboardWidgetInstance.model_validate(widget)
@@ -1463,6 +1503,83 @@ async def save_instagram_dashboard_layout(
 
     return _build_layout_response(
         ig_user_id=normalized_ig_user_id,
+        dashboard_user_id=resolved_dashboard_user_id,
+        active_widgets=normalized_widgets,
+        updated_at=updated_at,
+    )
+
+
+async def get_facebook_dashboard_layout(
+    fb_user_id: str,
+    dashboard_user_id: str | None = None,
+) -> dict[str, Any]:
+    normalized_fb_user_id = _normalize_non_empty_identifier(fb_user_id, "fb_user_id")
+    resolved_dashboard_user_id = _resolve_dashboard_user_id(normalized_fb_user_id, dashboard_user_id)
+
+    collection = await _get_facebook_layout_collection()
+    try:
+        document = await collection.find_one(
+            {
+                "fb_user_id": normalized_fb_user_id,
+                "dashboard_user_id": resolved_dashboard_user_id,
+            }
+        )
+    except PyMongoError as exc:
+        raise HTTPException(status_code=500, detail=f"Database query failed: {exc}") from exc
+
+    if not document:
+        return _build_facebook_layout_response(
+            fb_user_id=normalized_fb_user_id,
+            dashboard_user_id=resolved_dashboard_user_id,
+            active_widgets=[],
+            updated_at=None,
+        )
+
+    stored_widgets = document.get("active_widgets")
+    normalized_widgets = stored_widgets if isinstance(stored_widgets, list) else []
+    updated_at = document.get("updated_at")
+    normalized_updated_at = updated_at if isinstance(updated_at, datetime) else None
+
+    return _build_facebook_layout_response(
+        fb_user_id=normalized_fb_user_id,
+        dashboard_user_id=resolved_dashboard_user_id,
+        active_widgets=normalized_widgets,
+        updated_at=normalized_updated_at,
+    )
+
+
+async def save_facebook_dashboard_layout(
+    fb_user_id: str,
+    dashboard_user_id: str | None,
+    active_widgets: list[InstagramDashboardWidgetInstance],
+) -> dict[str, Any]:
+    normalized_fb_user_id = _normalize_non_empty_identifier(fb_user_id, "fb_user_id")
+    resolved_dashboard_user_id = _resolve_dashboard_user_id(normalized_fb_user_id, dashboard_user_id)
+    normalized_widgets = _serialize_layout_widgets(active_widgets)
+    updated_at = datetime.now(timezone.utc)
+
+    collection = await _get_facebook_layout_collection()
+    try:
+        await collection.update_one(
+            {
+                "fb_user_id": normalized_fb_user_id,
+                "dashboard_user_id": resolved_dashboard_user_id,
+            },
+            {
+                "$set": {
+                    "fb_user_id": normalized_fb_user_id,
+                    "dashboard_user_id": resolved_dashboard_user_id,
+                    "active_widgets": normalized_widgets,
+                    "updated_at": updated_at,
+                }
+            },
+            upsert=True,
+        )
+    except PyMongoError as exc:
+        raise HTTPException(status_code=500, detail=f"Database write failed: {exc}") from exc
+
+    return _build_facebook_layout_response(
+        fb_user_id=normalized_fb_user_id,
         dashboard_user_id=resolved_dashboard_user_id,
         active_widgets=normalized_widgets,
         updated_at=updated_at,

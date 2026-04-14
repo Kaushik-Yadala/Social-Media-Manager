@@ -303,6 +303,85 @@ class TestFacebookInsightsRoutes:
             "2026-04-10",
         )
 
+    def test_get_facebook_layout_route_calls_service(self):
+        expected_payload = {
+            "fb_user_id": "ClubArtizen",
+            "dashboard_user_id": "dashboard-user-1",
+            "active_widgets": [
+                {
+                    "instance_id": "dynamic-metric-line-1",
+                    "widget_id": "dynamic-metric-line",
+                    "config": {"metricKey": "views"},
+                }
+            ],
+            "updated_at": "2026-04-14T00:00:00Z",
+        }
+        with patch(
+            "routes.social_insights_routes.social_insights.get_facebook_dashboard_layout",
+            new=AsyncMock(return_value=expected_payload),
+        ) as mocked_service:
+            response = client.get(
+                "/manual/facebook/layout/ClubArtizen",
+                params={"dashboard_user_id": "dashboard-user-1"},
+            )
+
+        assert response.status_code == 200
+        assert response.json() == expected_payload
+        mocked_service.assert_awaited_once_with(
+            fb_user_id="ClubArtizen",
+            dashboard_user_id="dashboard-user-1",
+        )
+
+    def test_save_facebook_layout_route_calls_service(self):
+        expected_payload = {
+            "fb_user_id": "ClubArtizen",
+            "dashboard_user_id": "dashboard-user-1",
+            "active_widgets": [
+                {
+                    "instance_id": "channel-overview-1",
+                    "widget_id": "channel-overview",
+                    "config": {},
+                },
+                {
+                    "instance_id": "dynamic-metric-line-1",
+                    "widget_id": "dynamic-metric-line",
+                    "config": {"metricKey": "viewers"},
+                },
+            ],
+            "updated_at": "2026-04-14T00:10:00Z",
+        }
+        with patch(
+            "routes.social_insights_routes.social_insights.save_facebook_dashboard_layout",
+            new=AsyncMock(return_value=expected_payload),
+        ) as mocked_service:
+            response = client.put(
+                "/manual/facebook/layout/ClubArtizen",
+                json={
+                    "dashboard_user_id": "dashboard-user-1",
+                    "active_widgets": [
+                        {
+                            "instance_id": "channel-overview-1",
+                            "widget_id": "channel-overview",
+                            "config": {},
+                        },
+                        {
+                            "instance_id": "dynamic-metric-line-1",
+                            "widget_id": "dynamic-metric-line",
+                            "config": {"metricKey": "viewers"},
+                        },
+                    ],
+                },
+            )
+
+        assert response.status_code == 200
+        assert response.json() == expected_payload
+        kwargs = mocked_service.await_args.kwargs
+        assert kwargs["fb_user_id"] == "ClubArtizen"
+        assert kwargs["dashboard_user_id"] == "dashboard-user-1"
+        assert len(kwargs["active_widgets"]) == 2
+        assert kwargs["active_widgets"][0].instance_id == "channel-overview-1"
+        assert kwargs["active_widgets"][1].widget_id == "dynamic-metric-line"
+
     def test_csv_import_route_calls_service(self):
         expected_payload = {"message": "CSV import completed."}
         with patch(

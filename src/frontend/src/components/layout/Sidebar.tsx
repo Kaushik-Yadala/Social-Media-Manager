@@ -13,6 +13,7 @@ import {
     Lightbulb,
     Settings,
     Instagram,
+    Facebook,
     Linkedin,
     MessageCircle,
     Youtube,
@@ -38,6 +39,7 @@ const navigation: NavItem[] = [
         icon: Palette,
         children: [
             { label: 'Instagram', href: '/channels/instagram', icon: Instagram },
+            { label: 'Facebook', href: '/channels/facebook', icon: Facebook },
             { label: 'LinkedIn', href: '/channels/linkedin', icon: Linkedin },
             { label: 'WhatsApp', href: '/channels/whatsapp', icon: MessageCircle },
             { label: 'YouTube', href: '/channels/youtube', icon: Youtube },

@@ -97,3 +97,14 @@ class InstagramDashboardLayoutResponse(BaseModel):
     dashboard_user_id: str
     active_widgets: list[InstagramDashboardWidgetInstance] = Field(default_factory=list)
     updated_at: datetime | None = Field(default=None, description="Last layout update timestamp in UTC.")
+
+
+class FacebookDashboardLayoutResponse(BaseModel):
+    """Facebook dashboard layout payload returned by layout APIs."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    fb_user_id: str
+    dashboard_user_id: str
+    active_widgets: list[InstagramDashboardWidgetInstance] = Field(default_factory=list)
+    updated_at: datetime | None = Field(default=None, description="Last layout update timestamp in UTC.")
