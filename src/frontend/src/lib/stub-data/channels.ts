@@ -45,4 +45,15 @@ export const channels: Channel[] = [
         healthScore: 81,
         lastSynced: '2026-03-04T18:20:00Z',
     },
+    {
+    id: 'ch-facebook',
+    name: 'Facebook',
+    slug: 'facebook',
+    color: '#1877F2',
+    healthScore: 88, // or dynamic based on your data
+    followers: 0,    // your hook will override the stats, but the UI needs the metadata
+    icon: 'facebook', // (Match the string format used by your other channels)
+    isConnected: true,
+    lastSynced: 'Just now',
+  },
 ];

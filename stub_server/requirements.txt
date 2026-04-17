@@ -1,7 +1,0 @@
-fastapi
-uvicorn[standard]
-pymongo>=4.11,<5
-beanie>=2,<3
-pydantic
-python-dotenv
-python-multipart

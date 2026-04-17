@@ -23,6 +23,7 @@ import {
     getGAEngagement,
     getGAConversions,
     getGARealtime,
+    getGASocialSources,
     GAOverview,
     GAPageviews,
     GATrafficSources,
@@ -32,6 +33,7 @@ import {
     GAEngagement,
     GAConversions,
     GARealtimeReport,
+    GASocialSources,
 } from '@/lib/api/ga-api';
 
 // ── Colour palette ─────────────────────────────────────────────────────────────
@@ -118,13 +120,14 @@ export default function WebsitePage() {
     const [engagement, setEngagement] = useState<GAEngagement | null>(null);
     const [conversions, setConversions] = useState<GAConversions | null>(null);
     const [realtime, setRealtime] = useState<GARealtimeReport | null>(null);
+    const [socialSources, setSocialSources] = useState<GASocialSources | null>(null);
 
     const fetchAll = useCallback(async (start: string, gran: 'day' | 'week' | 'month', showFullLoader = false) => {
         if (showFullLoader) setLoading(true);
         else setRefreshing(true);
         setError(null);
         try {
-            const [ov, pv, tr, dv, tp, dem, eng, cv, rt] = await Promise.all([
+            const [ov, pv, tr, dv, tp, dem, eng, cv, rt, ss] = await Promise.all([
                 getGAOverview(start),
                 getGAPageviews(gran, start),
                 getGATrafficSources(start),
@@ -134,6 +137,7 @@ export default function WebsitePage() {
                 getGAEngagement(start),
                 getGAConversions(start),
                 getGARealtime(),
+                getGASocialSources(start),
             ]);
             setOverview(ov);
             setPageviews(pv);
@@ -144,6 +148,7 @@ export default function WebsitePage() {
             setEngagement(eng);
             setConversions(cv);
             setRealtime(rt);
+            setSocialSources(ss);
         } catch (e) {
             setError((e as Error).message ?? 'Failed to load GA data. Is the backend running?');
         } finally {
@@ -359,6 +364,66 @@ export default function WebsitePage() {
                     </CardContent>
                 </Card>
             </div>
+
+            {/* ── Social Channel Sources ────────────────────────────────────── */}
+            <Card>
+                <CardHeader>
+                    <CardTitle className="text-sm font-medium text-stone-700 flex items-center gap-2">
+                        <span className="text-lg leading-none">🔗</span> Social Channel Sources
+                        {socialSources && (
+                            <span className="ml-auto text-xs font-normal text-stone-400">
+                                {socialSources.social_share_pct}% of all sessions from social
+                            </span>
+                        )}
+                    </CardTitle>
+                </CardHeader>
+                <CardContent>
+                    {loading ? <SectionSkeleton rows={5} height="h-8" /> :
+                        !socialSources ? <p className="text-sm text-stone-400">No data</p> : (
+                            <div className="space-y-3">
+                                <p className="text-xs text-stone-400 mb-3">
+                                    How users arrived from each social platform
+                                    {' '}(<span className="font-mono">utm_source</span> attribution).
+                                    Total social sessions: <span className="font-medium text-stone-600">{socialSources.total_social_sessions.toLocaleString()}</span>
+                                </p>
+                                {socialSources.sources.map((src, i) => (
+                                    <div key={i}>
+                                        <div className="flex items-center justify-between mb-1.5">
+                                            <div className="flex items-center gap-2">
+                                                <div
+                                                    className="h-3 w-3 rounded-full shrink-0"
+                                                    style={{ backgroundColor: src.color }}
+                                                />
+                                                <span className="text-xs font-medium text-stone-700">{src.platform}</span>
+                                                <span className="text-[10px] font-mono text-stone-400 bg-stone-100 px-1.5 py-0.5 rounded">
+                                                    utm_source={src.utm_source}
+                                                </span>
+                                            </div>
+                                            <div className="flex items-center gap-3">
+                                                <span className="text-xs font-semibold text-stone-700 tabular-nums">
+                                                    {src.percentage.toFixed(1)}%
+                                                </span>
+                                                <span className="text-xs text-stone-400 tabular-nums w-20 text-right">
+                                                    {src.sessions.toLocaleString()} sessions
+                                                </span>
+                                            </div>
+                                        </div>
+                                        <div className="h-2 rounded-full bg-stone-100 overflow-hidden">
+                                            <div
+                                                className="h-full rounded-full transition-all duration-700"
+                                                style={{ width: `${src.percentage}%`, backgroundColor: src.color }}
+                                            />
+                                        </div>
+                                    </div>
+                                ))}
+                                <p className="text-[10px] text-stone-400 pt-1 border-t border-stone-100 mt-2">
+                                    💡 Track these sources in Google Analytics via Campaign URL Builder — add{' '}
+                                    <span className="font-mono">?utm_source=instagram&utm_medium=social</span> to every social link.
+                                </p>
+                            </div>
+                        )}
+                </CardContent>
+            </Card>
 
             {/* ── Demographics ────────────────────────────────────────────── */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

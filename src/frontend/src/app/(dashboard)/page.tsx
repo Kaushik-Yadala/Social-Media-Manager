@@ -8,15 +8,18 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { channels } from '@/lib/stub-data/channels';
-import { channelStats, followerGrowthTrend, engagementTrend } from '@/lib/stub-data/statistics';
+import { engagementTrend } from '@/lib/stub-data/statistics';
 import { mainDashboardWidgets } from '@/lib/stub-data/widgets';
 import { alerts } from '@/lib/stub-data/alerts';
 import { WidgetDefinition } from '@/types';
-import { Users, Eye, TrendingUp, MousePointerClick, Plus, Instagram, Linkedin, MessageCircle, Youtube, ArrowRight, X } from 'lucide-react';
+import { useAllChannelsData } from '@/lib/hooks/useAllChannelsData';
+import { Users, Eye, TrendingUp, MousePointerClick, Plus, Instagram, Linkedin, MessageCircle, Youtube, ArrowRight, X, Facebook } from 'lucide-react';
 import { PieChart, Pie, Cell } from 'recharts';
+
 
 const channelIcons: Record<string, React.ReactNode> = {
     instagram: <Instagram className="h-4 w-4" />,
+    facebook: <Facebook className="h-4 w-4" />,
     linkedin: <Linkedin className="h-4 w-4" />,
     whatsapp: <MessageCircle className="h-4 w-4" />,
     youtube: <Youtube className="h-4 w-4" />,
@@ -25,7 +28,7 @@ const channelIcons: Record<string, React.ReactNode> = {
 const COLORS = ['#E5A100', '#4A90D9', '#50B88C', '#9B6AD4', '#C75B39', '#3AAFA9'];
 
 // ---- Renders widget content based on widget definition ----
-function DashboardWidgetContent({ widget }: { widget: WidgetDefinition }) {
+function DashboardWidgetContent({ widget, channelStats }: { widget: WidgetDefinition; channelStats: ReturnType<typeof useAllChannelsData>['channelStats'] }) {
     const totalFollowers = channelStats.reduce((sum, s) => sum + s.followers, 0);
     const totalReach = channelStats.reduce((sum, s) => sum + s.reach, 0);
 
@@ -139,6 +142,9 @@ export default function DashboardPage() {
     const [activeWidgets, setActiveWidgets] = useState<WidgetDefinition[]>([]);
     const [sheetOpen, setSheetOpen] = useState(false);
 
+    // Live data from stub server, falls back to static stubs if unavailable
+    const { channelStats, followerGrowthTrend, loading } = useAllChannelsData();
+
     const totalFollowers = channelStats.reduce((sum, s) => sum + s.followers, 0);
     const avgEngagement = (channelStats.reduce((sum, s) => sum + s.engagementRate, 0) / channelStats.length).toFixed(1);
     const totalImpressions = channelStats.reduce((sum, s) => sum + s.impressions, 0);
@@ -152,6 +158,7 @@ export default function DashboardPage() {
         LinkedIn: followerGrowthTrend[1].data[i]?.value || 0,
         WhatsApp: followerGrowthTrend[2].data[i]?.value || 0,
         YouTube: followerGrowthTrend[3].data[i]?.value || 0,
+        Facebook: followerGrowthTrend[4]?.data[i]?.value || 0,
     }));
 
     const addWidget = (w: WidgetDefinition) => {
@@ -214,10 +221,10 @@ export default function DashboardPage() {
 
             {/* KPI Row */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                <MetricKPI label="Total Followers" value={totalFollowers} change={5.2} changeLabel="vs last month" icon={<Users className="h-5 w-5" />} />
-                <MetricKPI label="Avg Engagement Rate" value={`${avgEngagement}%`} change={1.8} changeLabel="vs last month" icon={<TrendingUp className="h-5 w-5" />} />
-                <MetricKPI label="Total Impressions" value={totalImpressions} change={12.4} changeLabel="vs last month" icon={<Eye className="h-5 w-5" />} />
-                <MetricKPI label="Avg CTR" value={`${avgCTR}%`} change={-0.3} changeLabel="vs last month" icon={<MousePointerClick className="h-5 w-5" />} />
+                <MetricKPI label="Total Followers" value={loading ? '…' : totalFollowers} change={5.2} changeLabel="vs last month" icon={<Users className="h-5 w-5" />} />
+                <MetricKPI label="Avg Engagement Rate" value={loading ? '…' : `${avgEngagement}%`} change={1.8} changeLabel="vs last month" icon={<TrendingUp className="h-5 w-5" />} />
+                <MetricKPI label="Total Impressions" value={loading ? '…' : totalImpressions} change={12.4} changeLabel="vs last month" icon={<Eye className="h-5 w-5" />} />
+                <MetricKPI label="Avg CTR" value={loading ? '…' : `${avgCTR}%`} change={-0.3} changeLabel="vs last month" icon={<MousePointerClick className="h-5 w-5" />} />
             </div>
 
             {/* Custom Widgets Section */}
@@ -242,7 +249,7 @@ export default function DashboardPage() {
                                     </div>
                                 </CardHeader>
                                 <CardContent className="p-0">
-                                    <DashboardWidgetContent widget={w} />
+                                    <DashboardWidgetContent widget={w} channelStats={channelStats} />
                                 </CardContent>
                             </Card>
                         ))}
@@ -265,6 +272,7 @@ export default function DashboardPage() {
                                 <Area type="monotone" dataKey="LinkedIn" stroke="#0A66C2" fill="#0A66C2" fillOpacity={0.1} strokeWidth={2} />
                                 <Area type="monotone" dataKey="WhatsApp" stroke="#25D366" fill="#25D366" fillOpacity={0.1} strokeWidth={2} />
                                 <Area type="monotone" dataKey="YouTube" stroke="#FF0000" fill="#FF0000" fillOpacity={0.1} strokeWidth={2} />
+                                <Area type="monotone" dataKey="Facebook" stroke="#1877F2" fill="#1877F2" fillOpacity={0.1} strokeWidth={2} />
                                 <Legend />
                             </AreaChart>
                         </ResponsiveContainer>
@@ -296,28 +304,37 @@ export default function DashboardPage() {
                     </CardHeader>
                     <CardContent>
                         <div className="space-y-3">
-                            {channels.map(ch => (
-                                <Link key={ch.id} href={`/channels/${ch.slug}`} className="flex items-center gap-4 p-3 rounded-lg bg-stone-50 hover:bg-stone-100 transition-colors cursor-pointer group">
-                                    <div className="flex items-center justify-center h-9 w-9 rounded-lg" style={{ backgroundColor: `${ch.color}15`, color: ch.color }}>
-                                        {channelIcons[ch.slug]}
-                                    </div>
-                                    <div className="flex-1">
-                                        <div className="flex items-center justify-between">
-                                            <span className="text-sm font-medium text-stone-800">{ch.name}</span>
-                                            <Badge variant={ch.healthScore >= 80 ? 'default' : ch.healthScore >= 60 ? 'secondary' : 'destructive'} className={ch.healthScore >= 80 ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-100' : ''}>
-                                                {ch.healthScore}%
-                                            </Badge>
+                            {channels.map(ch => {
+                                //  Find the live stats for this specific channel from the hook
+                                const liveStats = channelStats.find(s => s.channel === ch.slug);
+                                // Use live followers if available, otherwise fallback to stub
+                                const displayFollowers = liveStats ? liveStats.followers : ch.followers;
+
+                                return (
+                                    <Link key={ch.id} href={`/channels/${ch.slug}`} className="flex items-center gap-4 p-3 rounded-lg bg-stone-50 hover:bg-stone-100 transition-colors cursor-pointer group">
+                                        <div className="flex items-center justify-center h-9 w-9 rounded-lg" style={{ backgroundColor: `${ch.color}15`, color: ch.color }}>
+                                            {channelIcons[ch.slug]}
                                         </div>
-                                        <div className="mt-1.5 h-1.5 rounded-full bg-stone-200 overflow-hidden">
-                                            <div className="h-full rounded-full transition-all duration-700" style={{ width: `${ch.healthScore}%`, backgroundColor: ch.healthScore >= 80 ? '#10B981' : ch.healthScore >= 60 ? '#F59E0B' : '#EF4444' }} />
+                                        <div className="flex-1">
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-sm font-medium text-stone-800">{ch.name}</span>
+                                                <Badge variant={ch.healthScore >= 80 ? 'default' : ch.healthScore >= 60 ? 'secondary' : 'destructive'} className={ch.healthScore >= 80 ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-100' : ''}>
+                                                    {ch.healthScore}%
+                                                </Badge>
+                                            </div>
+                                            <div className="mt-1.5 h-1.5 rounded-full bg-stone-200 overflow-hidden">
+                                                <div className="h-full rounded-full transition-all duration-700" style={{ width: `${ch.healthScore}%`, backgroundColor: ch.healthScore >= 80 ? '#10B981' : ch.healthScore >= 60 ? '#F59E0B' : '#EF4444' }} />
+                                            </div>
                                         </div>
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                        <span className="text-xs text-stone-400">{ch.followers.toLocaleString()} followers</span>
-                                        <ArrowRight className="h-3.5 w-3.5 text-stone-300 group-hover:text-amber-500 transition-colors" />
-                                    </div>
-                                </Link>
-                            ))}
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-xs text-stone-400">
+                                                {loading ? '...' : displayFollowers.toLocaleString()} followers
+                                            </span>
+                                            <ArrowRight className="h-3.5 w-3.5 text-stone-300 group-hover:text-amber-500 transition-colors" />
+                                        </div>
+                                    </Link>
+                                );
+                            })}
                         </div>
                     </CardContent>
                 </Card>
@@ -347,17 +364,21 @@ export default function DashboardPage() {
             {/* Channel Comparison Bar Chart */}
             <ChartCard title="Channel Comparison" description="Key metrics by channel">
                 <div className="h-72">
-                    <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={channelStats.map(s => ({ channel: s.channel.charAt(0).toUpperCase() + s.channel.slice(1), Followers: s.followers, Engagement: s.engagement, 'Engagement Rate': s.engagementRate * 1000 }))}>
-                            <CartesianGrid strokeDasharray="3 3" stroke="#E7E5E4" />
-                            <XAxis dataKey="channel" tick={{ fontSize: 12, fill: '#78716C' }} />
-                            <YAxis tick={{ fontSize: 11, fill: '#78716C' }} />
-                            <Tooltip contentStyle={{ borderRadius: 8, border: '1px solid #E7E5E4', fontSize: 12 }} />
-                            <Bar dataKey="Followers" fill="#E5A100" radius={[4, 4, 0, 0]} />
-                            <Bar dataKey="Engagement" fill="#4A90D9" radius={[4, 4, 0, 0]} />
-                            <Legend />
-                        </BarChart>
-                    </ResponsiveContainer>
+                    {loading ? (
+                        <div className="h-full flex items-center justify-center text-stone-400 text-sm animate-pulse">Loading live data…</div>
+                    ) : (
+                        <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={channelStats.map(s => ({ channel: s.channel.charAt(0).toUpperCase() + s.channel.slice(1), Followers: s.followers, Engagement: s.engagement, 'Engagement Rate': s.engagementRate * 1000 }))}>
+                                <CartesianGrid strokeDasharray="3 3" stroke="#E7E5E4" />
+                                <XAxis dataKey="channel" tick={{ fontSize: 12, fill: '#78716C' }} />
+                                <YAxis tick={{ fontSize: 11, fill: '#78716C' }} />
+                                <Tooltip contentStyle={{ borderRadius: 8, border: '1px solid #E7E5E4', fontSize: 12 }} />
+                                <Bar dataKey="Followers" fill="#E5A100" radius={[4, 4, 0, 0]} />
+                                <Bar dataKey="Engagement" fill="#4A90D9" radius={[4, 4, 0, 0]} />
+                                <Legend />
+                            </BarChart>
+                        </ResponsiveContainer>
+                    )}
                 </div>
             </ChartCard>
         </div>

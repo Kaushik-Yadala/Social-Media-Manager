@@ -16,7 +16,7 @@ export interface User {
 }
 
 // --- Channels ---
-export type ChannelSlug = 'instagram' | 'linkedin' | 'whatsapp' | 'youtube';
+export type ChannelSlug = 'instagram' | 'linkedin' | 'whatsapp' | 'youtube' | 'facebook';
 
 export interface Channel {
   id: string;

@@ -4,7 +4,8 @@ import { useState } from 'react';
 import { MetricKPI, ChartCard, AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from '@/components/charts/ChartComponents';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { channelStats, followerGrowthTrend, geographyData, ageData } from '@/lib/stub-data/statistics';
+import { geographyData, ageData } from '@/lib/stub-data/statistics';
+import { useAllChannelsData } from '@/lib/hooks/useAllChannelsData';
 import { PieChart, Pie, Cell } from 'recharts';
 import { Users, TrendingUp, Eye, MousePointerClick } from 'lucide-react';
 
@@ -13,6 +14,9 @@ const COLORS = ['#E5A100', '#4A90D9', '#50B88C', '#9B6AD4', '#C75B39', '#3AAFA9'
 export default function StatisticsPage() {
     const [selectedChannel, setSelectedChannel] = useState<string>('all');
     const [dataType, setDataType] = useState<'all' | 'paid' | 'organic'>('all');
+
+    // Live data from stub server, falls back to static stubs if unavailable
+    const { channelStats, followerGrowthTrend, loading } = useAllChannelsData();
 
     const stats = selectedChannel === 'all'
         ? {
@@ -60,10 +64,10 @@ export default function StatisticsPage() {
 
             {/* KPI Cards */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                <MetricKPI label="Followers" value={stats.followers} change={stats.followerGrowth} changeLabel="growth" icon={<Users className="h-5 w-5" />} />
-                <MetricKPI label="Engagement Rate" value={`${stats.engagementRate.toFixed(1)}%`} change={1.2} icon={<TrendingUp className="h-5 w-5" />} />
-                <MetricKPI label="Total Impressions" value={stats.impressions} change={8.5} icon={<Eye className="h-5 w-5" />} />
-                <MetricKPI label="CTR" value={`${stats.ctr.toFixed(1)}%`} change={-0.2} icon={<MousePointerClick className="h-5 w-5" />} />
+                <MetricKPI label="Followers" value={loading ? '…' : stats.followers} change={stats.followerGrowth} changeLabel="growth" icon={<Users className="h-5 w-5" />} />
+                <MetricKPI label="Engagement Rate" value={loading ? '…' : `${stats.engagementRate.toFixed(1)}%`} change={1.2} icon={<TrendingUp className="h-5 w-5" />} />
+                <MetricKPI label="Total Impressions" value={loading ? '…' : stats.impressions} change={8.5} icon={<Eye className="h-5 w-5" />} />
+                <MetricKPI label="CTR" value={loading ? '…' : `${stats.ctr.toFixed(1)}%`} change={-0.2} icon={<MousePointerClick className="h-5 w-5" />} />
             </div>
 
             {/* Follower Growth Chart */}
