@@ -32,6 +32,9 @@ class Settings(BaseSettings):
     instagram_dashboard_layout_collection_name: str = "instagram_dashboard_layouts"
     facebook_collection_name: str = "facebook_insights_data"
     facebook_dashboard_layout_collection_name: str = "facebook_dashboard_layouts"
+    linkedin_collection_name: str = "linkedin_insights_data"
+    linkedin_posts_collection_name: str = "linkedin_post_insights_data"
+    linkedin_dashboard_layout_collection_name: str = "linkedin_dashboard_layouts"
 
     # Security / JWT
     secret_key: str = "supersecretkey" # CHANGE IN PRODUCTION

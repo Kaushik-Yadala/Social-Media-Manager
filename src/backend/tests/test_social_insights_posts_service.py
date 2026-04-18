@@ -9,7 +9,10 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from fastapi import HTTPException
 
-from models.social_insights_models import InstagramDashboardWidgetInstance
+from models.social_insights_models import (
+    InstagramDashboardWidgetInstance,
+    LinkedInPostInsightDocument,
+)
 import services.social_insights_service as social_insights
 
 
@@ -412,3 +415,147 @@ async def test_save_instagram_dashboard_layout_upserts_widgets():
     assert payload["dashboard_user_id"] == "dashboard-user-1"
     assert len(payload["active_widgets"]) == 2
     assert payload["updated_at"] is not None
+
+
+@pytest.mark.asyncio
+async def test_import_linkedin_xls_upserts_channel_and_posts():
+    class _FakeUploadFile:
+        def __init__(self, filename: str, content: bytes):
+            self.filename = filename
+            self._content = content
+
+        async def read(self) -> bytes:
+            return self._content
+
+    fake_post_document = LinkedInPostInsightDocument(
+        post_id="7449985017469894657",
+        li_org_id="ClubArtizen",
+        title="stay tuned!",
+        post_link="https://www.linkedin.com/feed/update/urn:li:activity:7449985017469894657",
+        post_type="Organic",
+        posted_by="Anita Hariharan",
+        metrics={
+            "impressions": 13,
+            "views": "NA",
+            "clicks": 6,
+            "likes": 0,
+            "comments": 0,
+            "reposts": 0,
+            "engagement_rate": 0.4615384638,
+            "total_interactions": 0,
+        },
+    )
+    fake_updates = {
+        datetime(2026, 4, 16, tzinfo=timezone.utc): {
+            "impressions_total": 120,
+            "clicks_total": 12,
+        }
+    }
+
+    with (
+        patch(
+            "services.social_insights_service._open_xls_workbook",
+            return_value=object(),
+        ),
+        patch(
+            "services.social_insights_service._parse_linkedin_metrics_xls",
+            return_value=(fake_updates, {"impressions_total", "clicks_total"}),
+        ),
+        patch(
+            "services.social_insights_service._parse_linkedin_posts_xls",
+            return_value=([fake_post_document], ["impressions", "views", "total_interactions"]),
+        ),
+        patch(
+            "services.social_insights_service._upsert_platform_insights",
+            new=AsyncMock(return_value=(1, 0)),
+        ) as mocked_channel_upsert,
+        patch(
+            "services.social_insights_service._upsert_linkedin_posts",
+            new=AsyncMock(return_value=(1, 0)),
+        ) as mocked_post_upsert,
+    ):
+        payload = await social_insights.import_linkedin_xls(
+            "ClubArtizen",
+            [_FakeUploadFile("linkedin-export.xls", b"xls-binary")],
+        )
+
+    assert payload["message"] == "LinkedIn XLS import completed."
+    assert payload["li_org_id"] == "ClubArtizen"
+    assert payload["processed_files"] == 1
+    assert payload["processed_posts"] == 1
+    assert payload["created_entries"] == 1
+    assert payload["created_post_entries"] == 1
+    assert payload["processed_file"] == "linkedin-export.xls"
+    mocked_channel_upsert.assert_awaited_once()
+    mocked_post_upsert.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_import_linkedin_xls_rejects_non_xls_file():
+    class _FakeUploadFile:
+        def __init__(self, filename: str, content: bytes):
+            self.filename = filename
+            self._content = content
+
+        async def read(self) -> bytes:
+            return self._content
+
+    with pytest.raises(HTTPException) as exc_info:
+        await social_insights.import_linkedin_xls(
+            "ClubArtizen",
+            [_FakeUploadFile("linkedin-export.csv", b"Date,Impressions\n")],
+        )
+
+    assert exc_info.value.status_code == 400
+    assert ".xls" in str(exc_info.value.detail)
+
+
+@pytest.mark.asyncio
+async def test_get_linkedin_post_insights_returns_na_values_for_empty_metrics():
+    class _FakeCollection:
+        async def find_one(self, query):
+            assert query == {"post_id": "7449985017469894657"}
+            return {
+                "post_id": "7449985017469894657",
+                "li_org_id": "ClubArtizen",
+                "metrics": {
+                    "impressions": 13,
+                    "views": "NA",
+                    "clicks": 6,
+                    "total_interactions": 0,
+                },
+            }
+
+        def find(self, _query):
+            return _FakeCursor([])
+
+    with patch(
+        "services.social_insights_service._get_linkedin_posts_collection",
+        new=AsyncMock(return_value=_FakeCollection()),
+    ):
+        payload = await social_insights.get_linkedin_post_insights(
+            linkedin_post_id="7449985017469894657",
+            metric="views,impressions",
+            period="lifetime",
+        )
+
+    assert payload["data"][0]["name"] == "views"
+    assert payload["data"][0]["values"] == [{"value": "NA"}]
+    assert payload["data"][1]["name"] == "impressions"
+    assert payload["data"][1]["values"] == [{"value": 13}]
+
+
+def test_linkedin_postwise_response_defaults_missing_content_type_to_other():
+    post_document = {
+        "post_id": "7449985017469894657",
+        "li_org_id": "ClubArtizen",
+        "created_date": datetime(2026, 4, 16, tzinfo=timezone.utc),
+        "metrics": {"impressions": 13},
+    }
+
+    payload = social_insights._linkedin_postwise_response_entry(
+        post_document=post_document,
+        requested_metrics=["impressions"],
+    )
+
+    assert payload["content_type"] == "Other"

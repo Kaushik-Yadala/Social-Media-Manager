@@ -9,6 +9,7 @@ import {
     FileArchive,
     FileSpreadsheet,
     Instagram,
+    Linkedin,
     Loader2,
     UploadCloud,
     X,
@@ -38,7 +39,7 @@ import {
 
 type PlatformTheme = {
     title: string;
-    accountParam: 'ig_user_id' | 'fb_user_id';
+    accountParam: 'ig_user_id' | 'fb_user_id' | 'li_org_id';
     accountLabel: string;
     Icon: typeof Instagram;
     panelBorder: string;
@@ -83,6 +84,21 @@ const PLATFORM_THEMES: Record<ManualPlatform, PlatformTheme> = {
         dropzoneClass: 'border-blue-200 bg-blue-50/70',
         dropzoneActiveClass: 'border-blue-400 bg-blue-100/70',
     },
+    linkedin: {
+        title: 'LinkedIn',
+        accountParam: 'li_org_id',
+        accountLabel: 'LinkedIn Org ID',
+        Icon: Linkedin,
+        panelBorder: 'border-sky-200',
+        panelHeaderBg: 'bg-gradient-to-r from-sky-50 via-cyan-50 to-blue-50',
+        accentText: 'text-sky-700',
+        badgeClass: 'border-sky-200 bg-sky-100 text-sky-700',
+        endpointClass: 'border-sky-200 bg-sky-50 text-sky-800',
+        submitClass: 'bg-sky-600 hover:bg-sky-700 focus-visible:ring-sky-300',
+        infoClass: 'text-sky-700',
+        dropzoneClass: 'border-sky-200 bg-sky-50/70',
+        dropzoneActiveClass: 'border-sky-400 bg-sky-100/70',
+    },
 };
 
 const DEFAULT_ACCOUNT_ID = 'ClubArtizen';
@@ -93,6 +109,10 @@ function isCsvFile(file: File): boolean {
 
 function isZipFile(file: File): boolean {
     return file.name.toLowerCase().endsWith('.zip');
+}
+
+function isXlsFile(file: File): boolean {
+    return file.name.toLowerCase().endsWith('.xls');
 }
 
 function formatFileSize(bytes: number): string {
@@ -138,6 +158,7 @@ export default function ManualUploadPage() {
     const fileInputRef = useRef<HTMLInputElement | null>(null);
     const theme = PLATFORM_THEMES[platform];
     const isInstagramPosts = platform === 'insta' && instagramScope === 'posts';
+    const isLinkedIn = platform === 'linkedin';
 
     const endpointResolved = useMemo(() => {
         const normalizedId = accountId.trim() || DEFAULT_ACCOUNT_ID;
@@ -146,13 +167,20 @@ export default function ManualUploadPage() {
 
     const selectedFileLabel = isInstagramPosts
         ? 'Post CSV file(s)'
-        : uploadMode === 'csv'
+        : isLinkedIn
+          ? 'LinkedIn workbook (.xls)'
+          : uploadMode === 'csv'
           ? 'CSV file(s)'
           : 'ZIP archive';
-    const accept =
-        isInstagramPosts || uploadMode === 'csv' ? '.csv,text/csv' : '.zip,application/zip';
-    const allowsMultipleSelection = uploadMode === 'csv';
-    const uploadDescription = isInstagramPosts
+    const accept = isLinkedIn
+        ? '.xls,application/vnd.ms-excel'
+        : isInstagramPosts || uploadMode === 'csv'
+          ? '.csv,text/csv'
+          : '.zip,application/zip';
+    const allowsMultipleSelection = !isLinkedIn && uploadMode === 'csv';
+    const uploadDescription = isLinkedIn
+        ? 'Upload one LinkedIn .xls workbook containing Metrics and All posts sheets to update channel and post analytics.'
+        : isInstagramPosts
         ? 'Upload one or more post-level CSV files to update Instagram post-wise insights in the database.'
         : 'Choose platform, file type, and account ID. Then drag files into the upload zone.';
     const successStats = success ? getSuccessStats(success) : [];
@@ -170,6 +198,11 @@ export default function ManualUploadPage() {
 
     const handlePlatformChange = (nextPlatform: ManualPlatform) => {
         setPlatform(nextPlatform);
+        if (nextPlatform === 'linkedin') {
+            setUploadMode('xls');
+        } else if (uploadMode === 'xls') {
+            setUploadMode('csv');
+        }
         resetSelectedFiles();
         setErrorMessage(null);
         setSuccess(null);
@@ -186,6 +219,10 @@ export default function ManualUploadPage() {
     };
 
     const handleUploadModeChange = (nextMode: ManualUploadMode) => {
+        if (isLinkedIn) {
+            setUploadMode('xls');
+            return;
+        }
         setUploadMode(nextMode);
         resetSelectedFiles();
         setErrorMessage(null);
@@ -195,6 +232,20 @@ export default function ManualUploadPage() {
     const handleSelectedFiles = (selected: File[]) => {
         if (selected.length === 0) {
             setFiles([]);
+            return;
+        }
+
+        if (isLinkedIn) {
+            if (selected.length !== 1 || !isXlsFile(selected[0])) {
+                setErrorMessage('LinkedIn mode requires exactly one .xls file.');
+                setFiles([]);
+                clearNativeFileInput();
+                return;
+            }
+
+            setFiles([selected[0]]);
+            setErrorMessage(null);
+            setSuccess(null);
             return;
         }
 
@@ -269,6 +320,11 @@ export default function ManualUploadPage() {
             return;
         }
 
+        if (isLinkedIn && (files.length !== 1 || !isXlsFile(files[0]))) {
+            setErrorMessage('LinkedIn upload requires exactly one .xls file.');
+            return;
+        }
+
         if (uploadMode === 'zip' && files.length !== 1) {
             setErrorMessage('ZIP mode requires exactly one file.');
             return;
@@ -303,7 +359,7 @@ export default function ManualUploadPage() {
             <div>
                 <h1 className="text-2xl font-heading font-bold text-stone-900">Manual Data Upload</h1>
                 <p className="mt-1 text-sm text-stone-500">
-                    Upload CSVs or ZIP archives to update channel insights, or upload Instagram posts.csv for post-wise insights.
+                    Upload Instagram/Facebook CSVs or ZIP archives, Instagram post CSVs, or a LinkedIn .xls workbook to update analytics.
                 </p>
             </div>
 
@@ -332,7 +388,7 @@ export default function ManualUploadPage() {
                                 onValueChange={(value) => handlePlatformChange(value as ManualPlatform)}
                                 className="w-full"
                             >
-                                <TabsList className="grid h-auto w-full grid-cols-2 bg-stone-100 p-1">
+                                <TabsList className="grid h-auto w-full grid-cols-3 bg-stone-100 p-1">
                                     <TabsTrigger
                                         value="insta"
                                         className="flex items-center gap-2 py-2 data-[state=active]:bg-violet-100 data-[state=active]:text-violet-700"
@@ -346,6 +402,13 @@ export default function ManualUploadPage() {
                                     >
                                         <Facebook className="h-4 w-4" />
                                         Facebook
+                                    </TabsTrigger>
+                                    <TabsTrigger
+                                        value="linkedin"
+                                        className="flex items-center gap-2 py-2 data-[state=active]:bg-sky-100 data-[state=active]:text-sky-700"
+                                    >
+                                        <Linkedin className="h-4 w-4" />
+                                        LinkedIn
                                     </TabsTrigger>
                                 </TabsList>
                             </Tabs>
@@ -387,7 +450,9 @@ export default function ManualUploadPage() {
                         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                             <div className="space-y-2">
                                 <Label>Upload Type</Label>
-                                {isInstagramPosts ? (
+                                {isLinkedIn ? (
+                                    <Input value="LinkedIn workbook (.xls)" disabled />
+                                ) : isInstagramPosts ? (
                                     <Input value="CSV file (posts.csv)" disabled />
                                 ) : (
                                     <Select
@@ -411,7 +476,13 @@ export default function ManualUploadPage() {
                                     id="manual-account-id"
                                     value={accountId}
                                     onChange={(event) => setAccountId(event.target.value)}
-                                    placeholder={`${theme.accountParam === 'ig_user_id' ? 'test_user' : 'test_page'} (defaults to ${DEFAULT_ACCOUNT_ID})`}
+                                    placeholder={`${
+                                        theme.accountParam === 'ig_user_id'
+                                            ? 'test_user'
+                                            : theme.accountParam === 'fb_user_id'
+                                              ? 'test_page'
+                                              : 'test_org'
+                                    } (defaults to ${DEFAULT_ACCOUNT_ID})`}
                                     autoComplete="off"
                                 />
                                 <p className={cn('text-xs', theme.infoClass)}>
@@ -455,7 +526,7 @@ export default function ManualUploadPage() {
                                 )}
                             >
                                 <div className={cn('rounded-full p-4', theme.endpointClass)}>
-                                    {isInstagramPosts || uploadMode === 'csv' ? (
+                                    {isLinkedIn || isInstagramPosts || uploadMode === 'csv' ? (
                                         <FileSpreadsheet className="h-8 w-8" />
                                     ) : (
                                         <FileArchive className="h-8 w-8" />
@@ -463,7 +534,9 @@ export default function ManualUploadPage() {
                                 </div>
                                 <p className="mt-4 text-lg font-semibold text-stone-900">
                                     Drag and drop{' '}
-                                    {isInstagramPosts
+                                    {isLinkedIn
+                                        ? 'a LinkedIn .xls workbook'
+                                        : isInstagramPosts
                                         ? 'post CSV files'
                                         : uploadMode === 'csv'
                                           ? 'CSV files'
@@ -484,10 +557,12 @@ export default function ManualUploadPage() {
                                 >
                                     <UploadCloud className="h-4 w-4" />
                                     Choose file
-                                    {uploadMode === 'csv' ? 's' : ''}
+                                    {isLinkedIn ? '' : uploadMode === 'csv' ? 's' : ''}
                                 </Button>
                                 <p className={cn('mt-4 text-xs', theme.infoClass)}>
-                                    {isInstagramPosts
+                                    {isLinkedIn
+                                        ? 'Supports one .xls workbook with Metrics and All posts sheets'
+                                        : isInstagramPosts
                                         ? 'Supports one or more .csv files'
                                         : uploadMode === 'csv'
                                           ? 'Supports one or more .csv files'

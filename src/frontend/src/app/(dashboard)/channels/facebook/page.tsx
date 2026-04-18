@@ -196,6 +196,38 @@ function endOfDay(date: Date): Date {
     return copy;
 }
 
+function getLastWeekDateRange(): DateRange {
+    const to = new Date();
+    const from = new Date(to);
+    from.setDate(to.getDate() - 6);
+    return { from, to };
+}
+
+function getLatestWeekDateRangeFromTimestamps(timestamps: number[]): DateRange | null {
+    let earliestTimestamp = Number.POSITIVE_INFINITY;
+    let latestTimestamp = Number.NEGATIVE_INFINITY;
+
+    for (const timestamp of timestamps) {
+        if (!Number.isFinite(timestamp)) continue;
+        if (timestamp < earliestTimestamp) earliestTimestamp = timestamp;
+        if (timestamp > latestTimestamp) latestTimestamp = timestamp;
+    }
+
+    if (!Number.isFinite(earliestTimestamp) || !Number.isFinite(latestTimestamp)) {
+        return null;
+    }
+
+    const to = endOfDay(new Date(latestTimestamp));
+    const earliestDate = startOfDay(new Date(earliestTimestamp));
+    const fromCandidate = startOfDay(new Date(latestTimestamp));
+    fromCandidate.setDate(fromCandidate.getDate() - 6);
+
+    return {
+        from: fromCandidate.getTime() < earliestDate.getTime() ? earliestDate : fromCandidate,
+        to,
+    };
+}
+
 function formatMetricLabel(metricKey: string): string {
     return METRIC_LABELS[metricKey] || metricKey.replace(/_/g, ' ').replace(/\b\w/g, (x) => x.toUpperCase());
 }
@@ -473,6 +505,7 @@ export default function FacebookPage() {
     const [isLayoutInitialized, setIsLayoutInitialized] = useState(false);
     const [dragOverId, setDragOverId] = useState<string | null>(null);
     const dragItemRef = useRef<string | null>(null);
+    const defaultDateRangeInitializedRef = useRef(false);
     const [selectedCalendarRange, setSelectedCalendarRange] = useState<DateRange | undefined>();
     const dashboardLayoutUserId = user?.id || FACEBOOK_USER_ID;
 
@@ -540,6 +573,20 @@ export default function FacebookPage() {
         metricSeries.forEach((series) => map.set(series.key, series));
         return map;
     }, [metricSeries]);
+
+    const latestValidWeekRange = useMemo<DateRange | null>(
+        () =>
+            getLatestWeekDateRangeFromTimestamps(
+                metricSeries.flatMap((series) => series.points.map((point) => point.sortValue)),
+            ),
+        [metricSeries],
+    );
+
+    useEffect(() => {
+        if (defaultDateRangeInitializedRef.current || isLoading) return;
+        setSelectedCalendarRange(latestValidWeekRange || getLastWeekDateRange());
+        defaultDateRangeInitializedRef.current = true;
+    }, [isLoading, latestValidWeekRange]);
 
     const selectedDateRange = useMemo<DateRangeBounds | null>(() => {
         if (!selectedCalendarRange?.from || !selectedCalendarRange.to) return null;

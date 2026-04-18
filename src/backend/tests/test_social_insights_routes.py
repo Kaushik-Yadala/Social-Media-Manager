@@ -428,6 +428,153 @@ class TestFacebookInsightsRoutes:
         assert args[0] == "test_page"
         assert args[1].filename == "facebook-channelwise.zip"
 
+
+class TestLinkedInInsightsRoutes:
+    def test_insights_route_calls_service(self):
+        expected_payload = {"data": [{"name": "impressions_total", "values": [{"value": 420}]}]}
+        with patch(
+            "routes.social_insights_routes.social_insights.get_linkedin_insights",
+            new=AsyncMock(return_value=expected_payload),
+        ) as mocked_service:
+            response = client.get(
+                "/manual/linkedin/insights/test_org",
+                params={
+                    "metric": "impressions_total",
+                    "period": "day",
+                    "since": "2026-04-01",
+                    "until": "2026-04-10",
+                },
+            )
+
+        assert response.status_code == 200
+        assert response.json() == expected_payload
+        mocked_service.assert_awaited_once_with(
+            "test_org",
+            "impressions_total",
+            "day",
+            "2026-04-01",
+            "2026-04-10",
+        )
+
+    def test_xls_import_route_calls_service(self):
+        expected_payload = {"message": "LinkedIn XLS import completed."}
+        with patch(
+            "routes.social_insights_routes.social_insights.import_linkedin_xls",
+            new=AsyncMock(return_value=expected_payload),
+        ) as mocked_service:
+            response = client.post(
+                "/manual/linkedin/xls/test_org",
+                files=[
+                    (
+                        "xls_file",
+                        (
+                            "linkedin-export.xls",
+                            b"D0CF11E0A1B11AE1-binary",
+                            "application/vnd.ms-excel",
+                        ),
+                    )
+                ],
+            )
+
+        assert response.status_code == 200
+        assert response.json() == expected_payload
+        args = mocked_service.await_args.args
+        assert args[0] == "test_org"
+        assert len(args[1]) == 1
+        assert args[1][0].filename == "linkedin-export.xls"
+
+    def test_get_linkedin_layout_route_calls_service(self):
+        expected_payload = {
+            "li_org_id": "ClubArtizen",
+            "dashboard_user_id": "dashboard-user-1",
+            "active_widgets": [
+                {
+                    "instance_id": "dynamic-metric-line-1",
+                    "widget_id": "dynamic-metric-line",
+                    "config": {"metricKey": "impressions_total"},
+                }
+            ],
+            "updated_at": "2026-04-14T00:00:00Z",
+        }
+        with patch(
+            "routes.social_insights_routes.social_insights.get_linkedin_dashboard_layout",
+            new=AsyncMock(return_value=expected_payload),
+        ) as mocked_service:
+            response = client.get(
+                "/manual/linkedin/layout/ClubArtizen",
+                params={"dashboard_user_id": "dashboard-user-1"},
+            )
+
+        assert response.status_code == 200
+        assert response.json() == expected_payload
+        mocked_service.assert_awaited_once_with(
+            li_org_id="ClubArtizen",
+            dashboard_user_id="dashboard-user-1",
+        )
+
+    def test_save_linkedin_layout_route_calls_service(self):
+        expected_payload = {
+            "li_org_id": "ClubArtizen",
+            "dashboard_user_id": "dashboard-user-1",
+            "active_widgets": [
+                {
+                    "instance_id": "channel-overview-1",
+                    "widget_id": "channel-overview",
+                    "config": {},
+                }
+            ],
+            "updated_at": "2026-04-14T00:10:00Z",
+        }
+        with patch(
+            "routes.social_insights_routes.social_insights.save_linkedin_dashboard_layout",
+            new=AsyncMock(return_value=expected_payload),
+        ) as mocked_service:
+            response = client.put(
+                "/manual/linkedin/layout/ClubArtizen",
+                json={
+                    "dashboard_user_id": "dashboard-user-1",
+                    "active_widgets": [
+                        {
+                            "instance_id": "channel-overview-1",
+                            "widget_id": "channel-overview",
+                            "config": {},
+                        }
+                    ],
+                },
+            )
+
+        assert response.status_code == 200
+        assert response.json() == expected_payload
+        kwargs = mocked_service.await_args.kwargs
+        assert kwargs["li_org_id"] == "ClubArtizen"
+        assert kwargs["dashboard_user_id"] == "dashboard-user-1"
+        assert len(kwargs["active_widgets"]) == 1
+        assert kwargs["active_widgets"][0].widget_id == "channel-overview"
+
+    def test_post_insights_route_calls_service(self):
+        expected_payload = {"data": [{"name": "impressions", "values": [{"value": 120}]}]}
+        with patch(
+            "routes.social_insights_routes.social_insights.get_linkedin_post_insights",
+            new=AsyncMock(return_value=expected_payload),
+        ) as mocked_service:
+            response = client.get(
+                "/manual/linkedin/posts/123456789/insights",
+                params={
+                    "metric": "impressions",
+                    "period": "lifetime",
+                },
+            )
+
+        assert response.status_code == 200
+        assert response.json() == expected_payload
+        mocked_service.assert_awaited_once_with(
+            linkedin_post_id="123456789",
+            metric="impressions",
+            period="lifetime",
+            post_id=None,
+            breakdown=None,
+        )
+
     def test_folders_alias_calls_service(self):
         expected_payload = {"message": "CSV import completed.", "source": "uploaded_folder_zip"}
         with patch(

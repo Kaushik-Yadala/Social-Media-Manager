@@ -7,8 +7,8 @@ const BASE_URL =
   'http://localhost:8000';
 const DEFAULT_MANUAL_ACCOUNT_ID = 'ClubArtizen';
 
-export type ManualPlatform = 'insta' | 'facebook';
-export type ManualUploadMode = 'csv' | 'zip';
+export type ManualPlatform = 'insta' | 'facebook' | 'linkedin';
+export type ManualUploadMode = 'csv' | 'zip' | 'xls';
 export type ManualInstagramUploadScope = 'channelwise' | 'posts';
 
 export interface ManualUploadResult {
@@ -16,6 +16,7 @@ export interface ManualUploadResult {
   source?: string;
   ig_user_id?: string;
   fb_user_id?: string;
+  li_org_id?: string;
   processed_files?: number;
   processed_file_names?: string[];
   touched_dates?: number;
@@ -56,11 +57,15 @@ export function getManualUploadPath(
   const normalizedAccountId = accountId.trim() || DEFAULT_MANUAL_ACCOUNT_ID;
   const safeId = encodeURIComponent(normalizedAccountId);
 
+  if (platform === 'linkedin') {
+    return `/manual/linkedin/xls/${safeId}`;
+  }
+
   if (platform === 'insta' && instagramScope === 'posts') {
     return `/manual/insta/posts/${safeId}/csvs`;
   }
 
-  const endpointType = mode === 'csv' ? 'csvs' : 'folders';
+  const endpointType = mode === 'zip' ? 'folders' : 'csvs';
   return `/manual/${platform}/${endpointType}/${safeId}`;
 }
 
@@ -74,7 +79,13 @@ export async function uploadManualInsights({
   const path = getManualUploadPath(platform, mode, accountId, instagramScope);
   const formData = new FormData();
 
-  if (platform === 'insta' && instagramScope === 'posts') {
+  if (platform === 'linkedin') {
+    const workbook = files[0];
+    if (!workbook) {
+      throw new Error('Please choose a LinkedIn .xls workbook to upload.');
+    }
+    formData.append('xls_file', workbook);
+  } else if (platform === 'insta' && instagramScope === 'posts') {
     if (files.length === 0) {
       throw new Error('Please choose one or more post CSV files to upload.');
     }
@@ -285,4 +296,86 @@ export async function saveFacebookDashboardLayout(params: {
   }
 
   return payload as FacebookDashboardLayoutPayload;
+}
+
+export interface LinkedInDashboardLayoutPayload {
+  li_org_id: string;
+  dashboard_user_id: string;
+  active_widgets: InstagramDashboardLayoutWidget[];
+  updated_at?: string | null;
+}
+
+export async function fetchLinkedInDashboardLayout(
+  liOrgId: string,
+  dashboardUserId?: string,
+): Promise<LinkedInDashboardLayoutPayload> {
+  const normalizedLiOrgId = liOrgId.trim() || DEFAULT_MANUAL_ACCOUNT_ID;
+  const query = dashboardUserId?.trim()
+    ? `?dashboard_user_id=${encodeURIComponent(dashboardUserId.trim())}`
+    : '';
+  const response = await fetch(
+    `${BASE_URL}/manual/linkedin/layout/${encodeURIComponent(normalizedLiOrgId)}${query}`,
+    { cache: 'no-store' },
+  );
+
+  let payload: unknown = null;
+  try {
+    payload = await response.json();
+  } catch {
+    payload = null;
+  }
+
+  if (!response.ok) {
+    const detail =
+      payload && typeof payload === 'object' && 'detail' in payload
+        ? (payload as { detail: unknown }).detail
+        : payload;
+    throw new Error(stringifyDetail(detail) || `Layout fetch failed (${response.status}).`);
+  }
+
+  if (!payload || typeof payload !== 'object') {
+    throw new Error('Layout fetch completed but response payload was invalid.');
+  }
+
+  return payload as LinkedInDashboardLayoutPayload;
+}
+
+export async function saveLinkedInDashboardLayout(params: {
+  liOrgId: string;
+  dashboardUserId?: string;
+  activeWidgets: InstagramDashboardLayoutWidget[];
+}): Promise<LinkedInDashboardLayoutPayload> {
+  const normalizedLiOrgId = params.liOrgId.trim() || DEFAULT_MANUAL_ACCOUNT_ID;
+  const response = await fetch(
+    `${BASE_URL}/manual/linkedin/layout/${encodeURIComponent(normalizedLiOrgId)}`,
+    {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        dashboard_user_id: params.dashboardUserId?.trim() || undefined,
+        active_widgets: params.activeWidgets,
+      }),
+    },
+  );
+
+  let payload: unknown = null;
+  try {
+    payload = await response.json();
+  } catch {
+    payload = null;
+  }
+
+  if (!response.ok) {
+    const detail =
+      payload && typeof payload === 'object' && 'detail' in payload
+        ? (payload as { detail: unknown }).detail
+        : payload;
+    throw new Error(stringifyDetail(detail) || `Layout save failed (${response.status}).`);
+  }
+
+  if (!payload || typeof payload !== 'object') {
+    throw new Error('Layout save completed but response payload was invalid.');
+  }
+
+  return payload as LinkedInDashboardLayoutPayload;
 }

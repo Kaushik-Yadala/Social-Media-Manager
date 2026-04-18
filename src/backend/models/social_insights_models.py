@@ -1,4 +1,4 @@
-"""Mongo document models for manual Instagram/Facebook insights imports."""
+"""Mongo document models for manual Instagram/Facebook/LinkedIn insights imports."""
 
 from __future__ import annotations
 
@@ -42,6 +42,89 @@ class InstagramPostInsightDocument(BaseModel):
         if not normalized:
             raise ValueError("Value cannot be empty.")
         return normalized
+
+
+class LinkedInChannelInsightDocument(BaseModel):
+    """Stored shape for LinkedIn channel-level daily metrics."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    platform: Literal["linkedin"] = "linkedin"
+    li_org_id: str = Field(..., description="LinkedIn organization/account identifier.")
+    date: datetime = Field(..., description="Metric date in UTC.")
+    metrics: dict[str, int | float] = Field(
+        default_factory=dict,
+        description="Normalized LinkedIn channel metric values keyed by metric name.",
+    )
+    updated_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        description="Last upsert timestamp in UTC.",
+    )
+
+    @field_validator("li_org_id")
+    @classmethod
+    def _validate_non_empty_li_org_id(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("Value cannot be empty.")
+        return normalized
+
+
+class LinkedInPostInsightDocument(BaseModel):
+    """Stored shape for post-level LinkedIn insights keyed by post_id."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    platform: Literal["linkedin"] = "linkedin"
+    post_id: str = Field(..., description="Unique LinkedIn post identifier.")
+    li_org_id: str = Field(..., description="LinkedIn org/account ID used for manual import.")
+    title: str | None = Field(default=None, description="Post title/content text.")
+    post_link: str | None = Field(default=None, description="LinkedIn post URL.")
+    post_type: str | None = Field(default=None, description="Post type label from XLS export.")
+    campaign_name: str | None = Field(default=None, description="Campaign name when present.")
+    posted_by: str | None = Field(default=None, description="Author/display owner label.")
+    created_date: datetime | None = Field(default=None, description="Post created date in UTC.")
+    campaign_start_date: datetime | None = Field(default=None, description="Campaign start date in UTC.")
+    campaign_end_date: datetime | None = Field(default=None, description="Campaign end date in UTC.")
+    audience: str | None = Field(default=None, description="Audience segment label.")
+    content_type: str | None = Field(default=None, description="Content subtype from XLS.")
+    period: str = Field(default="lifetime", description="Insights period label.")
+    metrics: dict[str, int | float | str] = Field(
+        default_factory=dict,
+        description="Metric values keyed by metric name. Empty source metrics are stored as 'NA'.",
+    )
+    updated_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        description="Last upsert timestamp in UTC.",
+    )
+
+    @field_validator("post_id", "li_org_id")
+    @classmethod
+    def _validate_non_empty_linkedin_ids(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("Value cannot be empty.")
+        return normalized
+
+    @field_validator("metrics")
+    @classmethod
+    def _validate_metrics_payload(
+        cls, value: dict[str, int | float | str]
+    ) -> dict[str, int | float | str]:
+        normalized_metrics: dict[str, int | float | str] = {}
+        for key, metric_value in value.items():
+            if isinstance(metric_value, bool):
+                raise ValueError(f"Invalid metric value for '{key}'.")
+            if isinstance(metric_value, (int, float)):
+                normalized_metrics[key] = metric_value
+                continue
+            if isinstance(metric_value, str):
+                normalized = metric_value.strip().upper()
+                if normalized in {"NA", "N/A"}:
+                    normalized_metrics[key] = "NA"
+                    continue
+            raise ValueError(f"Invalid metric value for '{key}'.")
+        return normalized_metrics
 
 
 class InstagramDashboardWidgetInstance(BaseModel):
@@ -105,6 +188,17 @@ class FacebookDashboardLayoutResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     fb_user_id: str
+    dashboard_user_id: str
+    active_widgets: list[InstagramDashboardWidgetInstance] = Field(default_factory=list)
+    updated_at: datetime | None = Field(default=None, description="Last layout update timestamp in UTC.")
+
+
+class LinkedInDashboardLayoutResponse(BaseModel):
+    """LinkedIn dashboard layout payload returned by layout APIs."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    li_org_id: str
     dashboard_user_id: str
     active_widgets: list[InstagramDashboardWidgetInstance] = Field(default_factory=list)
     updated_at: datetime | None = Field(default=None, description="Last layout update timestamp in UTC.")

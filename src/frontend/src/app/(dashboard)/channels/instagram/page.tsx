@@ -41,6 +41,7 @@ import {
     Bar,
     BarChart,
     CartesianGrid,
+    Legend,
     Line,
     LineChart,
     ResponsiveContainer,
@@ -181,7 +182,8 @@ type WidgetKind =
     | 'top-posts'
     | 'post-engagement'
     | 'post-reach-vs-views'
-    | 'post-metric-trend';
+    | 'post-metric-trend'
+    | 'post-type-metric-overlay';
 
 interface DashboardWidget {
     id: string;
@@ -216,6 +218,7 @@ const POST_WIDGET_KINDS = new Set<WidgetKind>([
     'post-engagement',
     'post-reach-vs-views',
     'post-metric-trend',
+    'post-type-metric-overlay',
 ]);
 const AGGREGATE_POST_TYPE = 'all';
 
@@ -292,6 +295,38 @@ function endOfDay(date: Date): Date {
     const copy = new Date(date);
     copy.setHours(23, 59, 59, 999);
     return copy;
+}
+
+function getLastWeekDateRange(): DateRange {
+    const to = new Date();
+    const from = new Date(to);
+    from.setDate(to.getDate() - 6);
+    return { from, to };
+}
+
+function getLatestWeekDateRangeFromTimestamps(timestamps: number[]): DateRange | null {
+    let earliestTimestamp = Number.POSITIVE_INFINITY;
+    let latestTimestamp = Number.NEGATIVE_INFINITY;
+
+    for (const timestamp of timestamps) {
+        if (!Number.isFinite(timestamp)) continue;
+        if (timestamp < earliestTimestamp) earliestTimestamp = timestamp;
+        if (timestamp > latestTimestamp) latestTimestamp = timestamp;
+    }
+
+    if (!Number.isFinite(earliestTimestamp) || !Number.isFinite(latestTimestamp)) {
+        return null;
+    }
+
+    const to = endOfDay(new Date(latestTimestamp));
+    const earliestDate = startOfDay(new Date(earliestTimestamp));
+    const fromCandidate = startOfDay(new Date(latestTimestamp));
+    fromCandidate.setDate(fromCandidate.getDate() - 6);
+
+    return {
+        from: fromCandidate.getTime() < earliestDate.getTime() ? earliestDate : fromCandidate,
+        to,
+    };
 }
 
 function formatMetricLabel(metricKey: string): string {
@@ -451,6 +486,65 @@ function buildPostMetricTrendData(posts: InstagramPostRecord[], metricKey: PostM
             date: row.dateLabel,
             value: Math.round(row.value),
         }));
+}
+
+function buildPostTypeMetricOverlayData(posts: InstagramPostRecord[], metricKey: PostMetricKey): {
+    data: Array<Record<string, string | number>>;
+    series: Array<{ postType: string; dataKey: string; color: string }>;
+} {
+    const byDate = new Map<
+        string,
+        {
+            sortValue: number;
+            dateLabel: string;
+            valuesByPostType: Record<string, number>;
+        }
+    >();
+    const postTypes = new Set<string>();
+
+    for (const post of posts) {
+        if (!post.publishTime) continue;
+        const publishDate = parseDate(post.publishTime);
+        if (!publishDate) continue;
+
+        const dateKey = publishDate.toISOString().slice(0, 10);
+        const normalizedPostType = normalizePostTypeLabel(post.postType);
+        const existing = byDate.get(dateKey) || {
+            sortValue: publishDate.getTime(),
+            dateLabel: formatDateWithYear(publishDate),
+            valuesByPostType: {},
+        };
+
+        existing.valuesByPostType[normalizedPostType] =
+            (existing.valuesByPostType[normalizedPostType] || 0) + getPostMetricValue(post, metricKey);
+
+        byDate.set(dateKey, existing);
+        postTypes.add(normalizedPostType);
+    }
+
+    const series = Array.from(postTypes)
+        .sort((a, b) => a.localeCompare(b))
+        .map((postType, index) => ({
+            postType,
+            dataKey: `post_type_${index}`,
+            color: PIE_COLORS[index % PIE_COLORS.length],
+        }));
+
+    const data = Array.from(byDate.values())
+        .sort((a, b) => a.sortValue - b.sortValue)
+        .map((row) => {
+            const chartRow: Record<string, string | number> = {
+                date: row.dateLabel,
+            };
+
+            for (const seriesItem of series) {
+                chartRow[seriesItem.dataKey] = Math.round(row.valuesByPostType[seriesItem.postType] || 0);
+            }
+
+            return chartRow;
+        });
+
+    return { data, series };
 }
 
 async function fetchJson<T>(path: string): Promise<T> {
@@ -655,6 +749,13 @@ function buildWidgetCatalog(series: MetricSeries[], posts: InstagramPostRecord[]
                 kind: 'post-reach-vs-views',
             });
         }
+
+        widgets.push({
+            id: 'post-type-metric-overlay',
+            title: 'Post Type Metric Comparison',
+            description: 'Compare all post types on one trend graph for the selected post metric.',
+            kind: 'post-type-metric-overlay',
+        });
     }
 
     return widgets;
@@ -865,6 +966,7 @@ export default function InstagramPage() {
     const [activePostWidgetInstances, setActivePostWidgetInstances] = useState<DashboardWidgetInstance[]>([]);
     const [postWidgetDragOverId, setPostWidgetDragOverId] = useState<string | null>(null);
     const postWidgetDragItemRef = useRef<string | null>(null);
+    const defaultDateRangeInitializedRef = useRef(false);
     const [selectedCalendarRange, setSelectedCalendarRange] = useState<DateRange | undefined>();
 
     const [postsMode, setPostsMode] = useState<'individual' | 'analytics'>('analytics');
@@ -950,6 +1052,23 @@ export default function InstagramPage() {
         metricSeries.forEach((series) => map.set(series.key, series));
         return map;
     }, [metricSeries]);
+
+    const latestValidWeekRange = useMemo<DateRange | null>(() => {
+        const timestamps = metricSeries.flatMap((series) => series.points.map((point) => point.sortValue));
+        for (const post of posts) {
+            if (!post.publishTime) continue;
+            const publishDate = parseDate(post.publishTime);
+            if (!publishDate) continue;
+            timestamps.push(publishDate.getTime());
+        }
+        return getLatestWeekDateRangeFromTimestamps(timestamps);
+    }, [metricSeries, posts]);
+
+    useEffect(() => {
+        if (defaultDateRangeInitializedRef.current || isLoading) return;
+        setSelectedCalendarRange(latestValidWeekRange || getLastWeekDateRange());
+        defaultDateRangeInitializedRef.current = true;
+    }, [isLoading, latestValidWeekRange]);
 
     const selectedDateRange = useMemo<DateRangeBounds | null>(() => {
         if (!selectedCalendarRange?.from || !selectedCalendarRange.to) return null;
@@ -1057,7 +1176,11 @@ export default function InstagramPage() {
                 };
             }
 
-            if (widget.kind === 'top-posts' || widget.kind === 'post-metric-trend') {
+            if (
+                widget.kind === 'top-posts' ||
+                widget.kind === 'post-metric-trend' ||
+                widget.kind === 'post-type-metric-overlay'
+            ) {
                 return {
                     postMetricKey: postGrowthMetricKey,
                     postType: AGGREGATE_POST_TYPE,
@@ -1089,7 +1212,11 @@ export default function InstagramPage() {
                 return { xMetricKey, yMetricKey };
             }
 
-            if (widget.kind === 'top-posts' || widget.kind === 'post-metric-trend') {
+            if (
+                widget.kind === 'top-posts' ||
+                widget.kind === 'post-metric-trend' ||
+                widget.kind === 'post-type-metric-overlay'
+            ) {
                 return {
                     postMetricKey: normalizePostMetricKey(config.postMetricKey, postGrowthMetricKey),
                     postType: normalizeWidgetPostType(config.postType, widgetPostTypeOptions),
@@ -1860,6 +1987,70 @@ export default function InstagramPage() {
                                     strokeWidth={2}
                                     dot={false}
                                 />
+                            </LineChart>
+                        </ResponsiveContainer>
+                    </div>
+                </div>
+            );
+        }
+
+        if (widget.kind === 'post-type-metric-overlay') {
+            const selectedMetricKey = normalizePostMetricKey(widgetInstance.config.postMetricKey, postGrowthMetricKey);
+            const selectedMetricLabel =
+                POST_TYPE_GROWTH_METRIC_OPTIONS.find((option) => option.value === selectedMetricKey)?.label ||
+                formatMetricLabel(selectedMetricKey);
+            const overlayData = buildPostTypeMetricOverlayData(postsForDisplay, selectedMetricKey);
+
+            if (overlayData.data.length === 0 || overlayData.series.length === 0) {
+                return (
+                    <p className="text-xs text-stone-400">
+                        No publish-time post-type comparison data available for {selectedMetricLabel.toLowerCase()}.
+                    </p>
+                );
+            }
+
+            return (
+                <div className="space-y-2">
+                    <Select
+                        value={selectedMetricKey}
+                        onValueChange={(value) =>
+                            updateWidgetConfig(widgetInstance.instanceId, {
+                                postMetricKey: value as PostMetricKey,
+                            })
+                        }
+                    >
+                        <SelectTrigger className="h-8 w-[220px] text-xs">
+                            <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                            {POST_TYPE_GROWTH_METRIC_OPTIONS.map((option) => (
+                                <SelectItem key={option.value} value={option.value}>
+                                    {option.label}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                    <div className="h-[240px]">
+                        <ResponsiveContainer width="100%" height="100%">
+                            <LineChart data={overlayData.data}>
+                                <CartesianGrid strokeDasharray="3 3" stroke="#E7E5E4" />
+                                <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#78716C' }} />
+                                <YAxis tick={{ fontSize: 10, fill: '#78716C' }} />
+                                <Tooltip
+                                    formatter={(value, name) => [Number(value).toLocaleString(), String(name)]}
+                                />
+                                <Legend />
+                                {overlayData.series.map((seriesItem) => (
+                                    <Line
+                                        key={seriesItem.dataKey}
+                                        type="monotone"
+                                        dataKey={seriesItem.dataKey}
+                                        name={seriesItem.postType}
+                                        stroke={seriesItem.color}
+                                        strokeWidth={2}
+                                        dot={false}
+                                    />
+                                ))}
                             </LineChart>
                         </ResponsiveContainer>
                     </div>
