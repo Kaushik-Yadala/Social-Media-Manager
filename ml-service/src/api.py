@@ -4,7 +4,7 @@ import numpy as np
 import joblib
 import shap
 import os
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, BackgroundTasks
 from pydantic import BaseModel
 from dotenv import load_dotenv
 from google import genai
@@ -12,6 +12,8 @@ from google.genai import types
 
 from src.features import engineer_features
 from src.data_loader import load_and_clean_data
+from src.trend_ingestor import get_rising_trends
+from src.vector_store import retrieve_similar_posts
 
 # load environment variables
 load_dotenv()
@@ -37,6 +39,10 @@ class PostRequest(BaseModel):
 class GenerateRequest(BaseModel):
     topic: str
     post_type: str
+
+class GenerateInsightRequest(BaseModel):
+    # Optional: If empty, the system will auto-hunt for trends
+    seed_keywords: list[str] = ["khadi", "block print", "sustainable packaging", "handmade"]
 
 # on startup
 @app.on_event("startup")
@@ -101,79 +107,68 @@ def predict_engagement(post: PostRequest):
         "baseline_rate": round(float(baseline), 4),
         "shap_explanations": shap_dict
     }
-
-# the generator (powered by gemini)
-@app.post("/generate")
-def generate_post(req: GenerateRequest):
-    if HISTORICAL_DF is None:
-        raise HTTPException(status_code=500, detail="Historical data not loaded.")
+    
+@app.post("/generate_insight")
+def generate_trend_insight(req: GenerateInsightRequest):
     if not os.getenv("GEMINI_API_KEY"):
          raise HTTPException(status_code=500, detail="Gemini API Key missing.")
 
-    # retrieve the top 3 best performing posts of this specific type
-    top_posts = (
-        HISTORICAL_DF
-        .filter(pl.col("Post type") == req.post_type)
-        .sort("Like_Rate", descending=True)
-        .head(3)
-        .select("Description")
-        .to_series()
-        .to_list()
-    )
-
-    if not top_posts:
-        examples_text = "No historical examples found for this post type. Use standard professional formatting."
+    # 1. Fetch rising trends from Google Trends
+    print("Scanning ecosystem for trends...")
+    trends = get_rising_trends(req.seed_keywords, threshold=15.0)
+    
+    if not trends:
+        return {"message": "No significant trends detected today based on your seed keywords."}
+        
+    # take the hottest trend
+    top_trend = trends[0]["trend"]
+    momentum = trends[0]["momentum"]
+    
+    # retrieve similar historical posts from our Vector DB
+    print(f"Retrieving internal context for: {top_trend}")
+    similar_posts = retrieve_similar_posts(top_trend, top_k=3)
+    
+    if not similar_posts:
+        context_text = "We have no historical posts related to this trend."
     else:
-        examples_text = "\n\n".join([f"Example {i+1}:\n{text}" for i, text in enumerate(top_posts)])
+        context_text = "\n\n".join([
+            f"- Caption: {post['description']}\n  Format: {post['metadata']['Post_type']}\n  Like Rate: {post['metadata']['Like_Rate']:.4f}" 
+            for post in similar_posts
+        ])
 
-    # the system Instructions
-    # system_instruction = f"""
-    # You are an expert social media strategist. Your task is to write a highly engaging caption for a new '{req.post_type}'.
-    
-    # Below are the top 3 best-performing historical captions for this account. 
-    # Analyze their tone, length, and hashtag usage, and mimic this exact style.
-    
-    # HISTORICAL BEST PERFORMERS:
-    # {examples_text}
-    # """
-
-    # user_prompt = f"Write a new caption about the following topic/trend: {req.topic}"
-
+    # construct the RAG Prompt for Gemini
     prompt = f"""
-    You are an expert social media strategist. Your task is to write a highly engaging caption for a new '{req.post_type}'.
+    You are an expert social media strategist for an artisanal lifestyle brand.
     
-    Below are the top 3 best-performing historical captions for this account. 
-    Analyze their tone, length, and hashtag usage, and mimic this exact style.
+    MARKET ALERT: Google Search volume for '{top_trend}' has spiked by {momentum}% in the last 7 days.
     
-    HISTORICAL BEST PERFORMERS:
-    {examples_text}
+    OUR HISTORICAL PERFORMANCE ON THIS TOPIC:
+    {context_text}
 
     ------------------------
-    TASK: Write a new caption about the following topic/trend: {req.topic}
+    TASK:
+    Based on the market trend and our historical data, generate:
+    1. A short, actionable strategic recommendation (Should we post about this? What format works best?)
+    2. A ready-to-post, highly engaging caption capitalizing on this trend.
     
-    CRITICAL INSTRUCTIONS: 
-    - Output ONLY the exact text of the social media caption.
-    - Do NOT include any introductory text like "Here is the caption".
-    - Do NOT include any outro, rationale, or explanation of your thought process.
-    - Return just the raw, ready-to-post text.
+    Format your response clearly.
     """
 
-    # call the Gemini model using the new google-genai
     try:
         response = client.models.generate_content(
             model='gemma-3-4b-it',
             contents=prompt,
             config=types.GenerateContentConfig(
                 temperature=0.7,
-                max_output_tokens=300
+                max_output_tokens=500
             )
         )
         
         return {
-            "topic": req.topic,
-            "post_type": req.post_type,
-            "generated_caption": response.text,
-            "context_used": len(top_posts)
+            "detected_trend": top_trend,
+            "momentum": momentum,
+            "strategy_and_caption": response.text,
+            "historical_posts_referenced": len(similar_posts)
         }
         
     except Exception as e:
