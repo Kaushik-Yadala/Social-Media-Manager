@@ -12,22 +12,22 @@ def train_and_evaluate(X_polars: pl.DataFrame, y_polars: pl.Series):
     """
     Trains a constrained Random Forest Regressor and extracts SHAP interpretability.
     """
-    # convert Polars to Pandas for Scikit-Learn/SHAP compatibility
+    # convert polars to pandas for scikit-learn/SHAP compatibility
     X = X_polars.to_pandas()
     y = y_polars.to_pandas()
 
     # split into Training and Testing sets (80% train, 20% test)
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
-    # model Architecture
-    # max_depth=3 prevents the tree from growing too deep and memorizing our small dataset
+    # model architecture
+    # max_depth=3 prevents the tree from growing too deep and memorizing the small dataset
     # min_samples_leaf=5 ensures every decision branch has at least 5 posts backing it up
     model = RandomForestRegressor(
         n_estimators=100, 
         max_depth=3, 
         min_samples_leaf=5,
         random_state=42,
-        n_jobs=-1 # Utilize all CPU cores
+        n_jobs=-1 # utilize all CPU cores
     )
 
     print("Training Random Forest Regressor...")
@@ -56,7 +56,7 @@ def train_and_evaluate(X_polars: pl.DataFrame, y_polars: pl.Series):
     print("\n--- Top 5 Drivers of Engagement ---")
     print(importance_df.head(5).to_string(index=False))
 
-    # save the Model Artifact
+    # save the model artifact
     # save this so the FastAPI server doesn't have to retrain it on every request
     model_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../models")
     os.makedirs(model_dir, exist_ok=True)

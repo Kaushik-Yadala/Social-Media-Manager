@@ -5,9 +5,9 @@ import glob
 def load_and_clean_data(data_dir: str = "../data/raw/posts") -> pl.DataFrame:
     """
     Loads all CSVs from the raw directory, cleans them, 
-    and calculates the target variable (Like Rate).
+    and calculates the target variable.
     """
-    # find all CSV files in the directory
+    # find all csv files in the directory
     base_path = os.path.dirname(os.path.abspath(__file__))
     target_path = os.path.join(base_path, data_dir, "*.csv")
     csv_files = glob.glob(target_path)
@@ -15,14 +15,14 @@ def load_and_clean_data(data_dir: str = "../data/raw/posts") -> pl.DataFrame:
     if not csv_files:
          raise FileNotFoundError("No CSV files found in the data/raw directory.")
 
-    # use Polars lazy execution to scan all CSVs
+    # use polars lazy execution to scan all csv
     # scan_csv doesn't load data into memory yet; it just creates a computation graph
     lazy_frames = [pl.scan_csv(file) for file in csv_files]
     
     # concatenate all frames into one master lazy frame
     lf = pl.concat(lazy_frames, how="diagonal")
 
-    # transformation Pipeline
+    # transformation pipeline
     cleaned_df = (
         lf
         # filter out invalid rows immediately to save processing power later
@@ -34,13 +34,12 @@ def load_and_clean_data(data_dir: str = "../data/raw/posts") -> pl.DataFrame:
             (pl.col("Likes") / pl.col("Reach")).alias("Like_Rate")
         ])
         
-        # Select only the columns we actually need for feature engineering later
+        # select only the columns we actually need for feature engineering later
         .select([
             "Post ID", 
             "Description", 
             "Duration (sec)", 
             "Publish time", 
-            "Date", 
             "Post type",
             "Like_Rate"
         ])

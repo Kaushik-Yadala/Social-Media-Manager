@@ -25,7 +25,7 @@ def engineer_features(df: pl.DataFrame) -> tuple[pl.DataFrame, pl.Series]:
         pl.col("desc_clean").map_elements(get_sentiment, return_dtype=pl.Float64).alias("sentiment")
     ])
 
-    # Based on your data "03/31/2025", the format is MM/DD/YYYY
+    # Based on data "03/31/2025", the format is MM/DD/YYYY
     df = df.with_columns(
         pl.col("Publish time").str.strptime(pl.Datetime, format="%m/%d/%Y %H:%M", strict=False).alias("dt_parsed")
     )
@@ -43,7 +43,7 @@ def engineer_features(df: pl.DataFrame) -> tuple[pl.DataFrame, pl.Series]:
         (np.cos(2 * np.pi * pl.col("weekday") / 7)).alias("weekday_cos"),
     ])
 
-    # one-Hot Encoding
+    # one-hot encoding
     # turns "Post type" into binary columns: "Post type_IG reel", "Post type_IG image", etc.
     df = df.to_dummies(columns=["Post type"])
 
@@ -52,7 +52,7 @@ def engineer_features(df: pl.DataFrame) -> tuple[pl.DataFrame, pl.Series]:
 
     # select only our finalized numerical columns for the feature matrix
     cols_to_drop = [
-        "Post ID", "Description", "Publish time", "Date", "Like_Rate", 
+        "Post ID", "Description", "Publish time", "Like_Rate", 
         "desc_clean", "dt_parsed", "hour", "weekday"
     ]
     
