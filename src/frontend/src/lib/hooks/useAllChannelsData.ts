@@ -24,6 +24,7 @@ const API_BASE =
 
 const INSTA_ACCOUNT_ID = 'ClubArtizen';
 const FACEBOOK_USER_ID = 'ClubArtizen';
+const LINKEDIN_ORG_ID = 'ClubArtizen';
 /* ── Shared response shapes (mirror the channel pages) ─────────────────────── */
 
 interface ManualInsightValue {
@@ -83,15 +84,18 @@ function parseManualSeries(payload: ManualInsightsResponse): Map<string, MetricS
 }
 
 async function fetchManualInsights(
-    platform: 'insta' | 'facebook',
+    platform: 'insta' | 'facebook' | 'linkedin',
     metrics: string[],
 ): Promise<Map<string, MetricSeries>> {
     const params = new URLSearchParams({ metric: metrics.join(','), period: 'day' });
     let url = '';
-    if(platform==='insta'){
-    url = `${API_BASE}/manual/insta/insights/${encodeURIComponent(INSTA_ACCOUNT_ID)}?${params}`;
+    if (platform === 'insta') {
+        url = `${API_BASE}/manual/insta/insights/${encodeURIComponent(INSTA_ACCOUNT_ID)}?${params}`;
     }
-    else{
+    else if (platform === 'linkedin') {
+        url = `${API_BASE}/manual/linkedin/insights/${encodeURIComponent(LINKEDIN_ORG_ID)}?${params}`;
+    }
+    else {
         url = `${API_BASE}/manual/facebook/insights/${encodeURIComponent(FACEBOOK_USER_ID)}?${params}`;
     }
     const res = await fetch(url, { cache: 'no-store' });
@@ -106,17 +110,20 @@ export interface AllChannelsData {
     channelStats: ChannelStats[];
     followerGrowthTrend: TimeSeries[];
     loading: boolean;
+    error: string | null;
 }
 
 export function useAllChannelsData(): AllChannelsData {
     const [channelStats, setChannelStats] = useState<ChannelStats[]>(stubStats);
     const [followerGrowthTrend, setFollowerGrowthTrend] = useState<TimeSeries[]>(stubGrowth);
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
         let cancelled = false;
 
         async function load() {
+            setError(null);
             // Instagram metrics
             const igMetrics = [
                 'views', 'reach', 'content_interactions',
@@ -127,21 +134,39 @@ export function useAllChannelsData(): AllChannelsData {
                 'views', 'viewers', 'content_interactions',
                 'facebook_link_clicks', 'facebook_visits', 'facebook_follows',
             ];
+            const liMetrics = [
+                'views', 'viewers', 'content_interactions',
+                'linkedin_link_clicks', 'linkedin_visits', 'linkedin_follows',
+            ]
 
-            const [igData, fbData] = await Promise.all([
-                fetchManualInsights('insta', igMetrics).catch(() => null),
-                fetchManualInsights('facebook', fbMetrics).catch(() => null),
-            ]);
+            let igData: Map<string, MetricSeries> | null = null;
+            let fbData: Map<string, MetricSeries> | null = null;
+            let liData: Map<string, MetricSeries> | null = null;
+            let fetchError: string | null = null;
+
+            try {
+                [igData, fbData, liData] = await Promise.all([
+                    fetchManualInsights('insta', igMetrics).catch(() => null),
+                    fetchManualInsights('facebook', fbMetrics).catch(() => null),
+                    fetchManualInsights('linkedin', liMetrics).catch(() => null),
+                ]);
+            } catch (err) {
+                fetchError = (err as Error)?.message || 'Failed to load channel data';
+            }
 
             if (cancelled) return;
 
-            // Stub fallbacks for channels without manual endpoints
-            const liStub = stubStats.find(s => s.channel === 'linkedin')!;
-            const waStub = stubStats.find(s => s.channel === 'whatsapp')!;
-            const ytStub = stubStats.find(s => s.channel === 'youtube')!;
+            if (fetchError) setError(fetchError);
+
+            // Stub fallbacks for all channels
+            const igStub = stubStats.find(s => s.channel === 'instagram') ?? stubStats[0];
+            const fbStub = stubStats.find(s => s.channel === 'facebook') ?? igStub;
+            const liStub = stubStats.find(s => s.channel === 'linkedin') ?? stubStats[0];
+            const waStub = stubStats.find(s => s.channel === 'whatsapp') ?? stubStats[0];
+            const ytStub = stubStats.find(s => s.channel === 'youtube') ?? stubStats[0];
 
             // ── Instagram ──────────────────────────────────────────────────
-            const igStub = stubStats.find(s => s.channel === 'instagram')!;
+
             const igStats: ChannelStats = igData
                 ? {
                     channel: 'instagram',
@@ -181,9 +206,9 @@ export function useAllChannelsData(): AllChannelsData {
             const fbStats: ChannelStats = fbData
                 ? {
                     channel: 'facebook', // Changed from 'instagram'
-                    followers: Math.round(fbData.get('facebook_follows')?.total ?? 0),
-                    followerGrowth: fbData.get('facebook_follows')?.latest ?? 0,
-                    engagement: Math.round(fbData.get('content_interactions')?.total ?? 0),
+                    followers: Math.round(fbData.get('facebook_follows')?.total ?? fbStub.followers),
+                    followerGrowth: fbData.get('facebook_follows')?.latest ?? fbStub.followerGrowth,
+                    engagement: Math.round(fbData.get('content_interactions')?.total ?? fbStub.engagement),
                     engagementRate:
                         fbData.get('content_interactions') && fbData.get('views')
                             ? Number(
@@ -194,9 +219,9 @@ export function useAllChannelsData(): AllChannelsData {
                                     ).toFixed(2)
                                 ),
                             )
-                            : 0,
-                    impressions: Math.round(fbData.get('views')?.total ?? 0),
-                    reach: Math.round(fbData.get('viewers')?.total ?? 0),
+                            : fbStub.engagementRate,
+                    impressions: Math.round(fbData.get('views')?.total ?? fbStub.impressions),
+                    reach: Math.round(fbData.get('viewers')?.total ?? fbStub.reach),
                     ctr:
                         fbData.get('facebook_link_clicks') && fbData.get('views')
                             ? Number(
@@ -207,33 +232,48 @@ export function useAllChannelsData(): AllChannelsData {
                                     ).toFixed(2)
                                 ),
                             )
-                            : 0,
+                            : fbStub.ctr,
                 }
-                : {
-                    channel: 'facebook', 
-                    followers: 0, followerGrowth: 0, engagement: 0,
-                    engagementRate: 0, impressions: 0, reach: 0, ctr: 0,
-                };
+                : fbStub;
 
-            // ── Merged channel stats: IG + FB combined as "instagram" slot ─
-            // The main dashboard only shows 4 channels. We merge IG + FB
-            // into the instagram slot (summed) so the KPIs reflect both Meta
-            // channels without changing the UI structure.
-            const mergedIG: ChannelStats = {
-                channel: 'instagram',
-                followers: igStats.followers + fbStats.followers,
-                followerGrowth: igStats.followerGrowth + fbStats.followerGrowth,
-                engagement: igStats.engagement + fbStats.engagement,
-                engagementRate: (igStats.engagementRate + fbStats.engagementRate) / 2,
-                impressions: igStats.impressions + fbStats.impressions,
-                reach: igStats.reach + fbStats.reach,
-                ctr: (igStats.ctr + fbStats.ctr) / 2,
-            };
+            const liStats: ChannelStats = liData
+                ? {
+                    channel: 'linkedin', // Changed from 'instagram'
+                    followers: Math.round(liData.get('linkedin_follows')?.total ?? liStub.followers),
+                    followerGrowth: liData.get('linkedin_follows')?.latest ?? liStub.followerGrowth,
+                    engagement: Math.round(liData.get('content_interactions')?.total ?? liStub.engagement),
+                    engagementRate:
+                        liData.get('content_interactions') && liData.get('views')
+                            ? Number(
+                                (
+                                    ((liData.get('content_interactions')!.total /
+                                        Math.max(liData.get('views')!.total, 1)) *
+                                        100
+                                    ).toFixed(2)
+                                ),
+                            )
+                            : liStub.engagementRate,
+                    impressions: Math.round(liData.get('views')?.total ?? liStub.impressions),
+                    reach: Math.round(liData.get('viewers')?.total ?? liStub.reach),
+                    ctr:
+                        liData.get('linkedin_link_clicks') && liData.get('views')
+                            ? Number(
+                                (
+                                    ((liData.get('linkedin_link_clicks')!.total /
+                                        Math.max(liData.get('views')!.total, 1)) *
+                                        100
+                                    ).toFixed(2)
+                                ),
+                            )
+                            : liStub.ctr,
+                }
+                : liStub;
+
 
             const merged: ChannelStats[] = [
-                igStats, // Use individual IG stats now
-                fbStats, // Add Facebook as its own entry
-                liStub,
+                igStats,
+                fbStats,
+                liStats,
                 waStub,
                 ytStub,
             ];
@@ -262,10 +302,10 @@ export function useAllChannelsData(): AllChannelsData {
                 stubGrowth[1], // LinkedIn — no manual endpoint
                 stubGrowth[2], // WhatsApp — no manual endpoint
                 stubGrowth[3], // YouTube  — no manual endpoint
-                { 
-                    label: 'Facebook', 
-                    color: '#1877F2', 
-                    data: fbGrowthPoints || fallbackFbData 
+                {
+                    label: 'Facebook',
+                    color: '#1877F2',
+                    data: fbGrowthPoints || fallbackFbData
                 }
             ];
 
@@ -274,9 +314,14 @@ export function useAllChannelsData(): AllChannelsData {
             setLoading(false);
         }
 
-        load();
+        load().catch((err) => {
+            if (!cancelled) {
+                setError((err as Error)?.message || 'Unexpected error loading channel data');
+                setLoading(false);
+            }
+        });
         return () => { cancelled = true; };
     }, []);
 
-    return { channelStats, followerGrowthTrend, loading };
+    return { channelStats, followerGrowthTrend, loading, error };
 }

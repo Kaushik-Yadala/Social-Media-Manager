@@ -151,14 +151,15 @@ export default function DashboardPage() {
     const avgCTR = (channelStats.reduce((sum, s) => sum + s.ctr, 0) / channelStats.length).toFixed(1);
     const activeAlerts = alerts.filter(a => a.status === 'active').length;
 
-    // Combined follower growth data for chart
-    const growthChartData = followerGrowthTrend[0].data.map((point, i) => ({
+    // Combined follower growth data for chart — guard against empty arrays
+    const baseGrowthData = followerGrowthTrend[0]?.data ?? [];
+    const growthChartData = baseGrowthData.map((point, i) => ({
         date: point.date.slice(5),
-        Instagram: followerGrowthTrend[0].data[i]?.value || 0,
-        LinkedIn: followerGrowthTrend[1].data[i]?.value || 0,
-        WhatsApp: followerGrowthTrend[2].data[i]?.value || 0,
-        YouTube: followerGrowthTrend[3].data[i]?.value || 0,
-        Facebook: followerGrowthTrend[4]?.data[i]?.value || 0,
+        Instagram: followerGrowthTrend[0]?.data[i]?.value ?? 0,
+        LinkedIn:  followerGrowthTrend[1]?.data[i]?.value ?? 0,
+        WhatsApp:  followerGrowthTrend[2]?.data[i]?.value ?? 0,
+        YouTube:   followerGrowthTrend[3]?.data[i]?.value ?? 0,
+        Facebook:  followerGrowthTrend[4]?.data[i]?.value ?? 0,
     }));
 
     const addWidget = (w: WidgetDefinition) => {

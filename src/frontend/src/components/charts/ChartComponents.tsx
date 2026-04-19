@@ -5,7 +5,7 @@ import { LineChart, Line, AreaChart, Area, BarChart, Bar, XAxis, YAxis, Cartesia
 
 interface ChartCardProps {
     title: string;
-    description?: string;
+    description?: React.ReactNode;
     children: React.ReactNode;
     className?: string;
 }
@@ -15,7 +15,7 @@ export function ChartCard({ title, description, children, className }: ChartCard
         <Card className={`card-hover ${className || ''}`}>
             <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-medium text-stone-700">{title}</CardTitle>
-                {description && <p className="text-xs text-stone-400">{description}</p>}
+                {description && <div className="text-xs text-stone-400">{description}</div>}
             </CardHeader>
             <CardContent>{children}</CardContent>
         </Card>

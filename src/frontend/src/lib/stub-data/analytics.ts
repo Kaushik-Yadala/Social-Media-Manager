@@ -1,11 +1,14 @@
 import { PostTypePerformance, OptimalPostingTime, HeatmapCell } from '@/types';
 
 export const postTypePerformance: PostTypePerformance[] = [
-    { type: 'Reel', reach: 45000, comments: 890, shares: 1200, engagement: 5.2 },
-    { type: 'Carousel', reach: 32000, comments: 620, shares: 450, engagement: 4.1 },
-    { type: 'Feed Post', reach: 28000, comments: 340, shares: 280, engagement: 3.5 },
-    { type: 'Story', reach: 18000, comments: 0, shares: 120, engagement: 2.8 },
-    { type: 'Article', reach: 12000, comments: 180, shares: 340, engagement: 3.9 },
+    { type: 'IG Reel', reach: 45000, comments: 890, shares: 1200, engagement: 5.2 },
+    { type: 'IG Carousel', reach: 32000, comments: 620, shares: 450, engagement: 4.1 },
+    { type: 'IG Feed Post', reach: 28000, comments: 340, shares: 280, engagement: 3.5 },
+    { type: 'IG Story', reach: 18000, comments: 0, shares: 120, engagement: 2.8 },
+    { type: 'FB Post', reach: 38000, comments: 520, shares: 680, engagement: 4.3 },
+    { type: 'FB Reel', reach: 52000, comments: 710, shares: 1400, engagement: 5.8 },
+    { type: 'LI Article', reach: 12000, comments: 180, shares: 340, engagement: 3.9 },
+    { type: 'LI Post', reach: 9500, comments: 140, shares: 210, engagement: 3.2 },
     { type: 'YT Video', reach: 67800, comments: 312, shares: 890, engagement: 5.6 },
     { type: 'YT Short', reach: 128000, comments: 456, shares: 2340, engagement: 7.8 },
 ];
@@ -29,11 +32,13 @@ export const heatmapData: HeatmapCell[] = days.flatMap(day =>
     }))
 );
 
+// Scores are normalised 0-100; reflect the relative platform strengths
+// consistent with the follower/engagement ratios in statistics stub data
 export const spiderChartData = [
-    { metric: 'Reach', instagram: 85, linkedin: 60, whatsapp: 40, youtube: 78 },
-    { metric: 'Engagement', instagram: 78, linkedin: 55, whatsapp: 92, youtube: 72 },
-    { metric: 'Growth', instagram: 65, linkedin: 48, whatsapp: 88, youtube: 74 },
-    { metric: 'Content Quality', instagram: 90, linkedin: 75, whatsapp: 60, youtube: 85 },
-    { metric: 'Response Time', instagram: 45, linkedin: 50, whatsapp: 95, youtube: 35 },
-    { metric: 'Conversion', instagram: 55, linkedin: 70, whatsapp: 82, youtube: 62 },
+    { metric: 'Reach',           instagram: 85, facebook: 79, linkedin: 60, whatsapp: 40, youtube: 78 },
+    { metric: 'Engagement',      instagram: 78, facebook: 62, linkedin: 55, whatsapp: 92, youtube: 72 },
+    { metric: 'Growth',          instagram: 65, facebook: 57, linkedin: 48, whatsapp: 88, youtube: 74 },
+    { metric: 'Content Quality', instagram: 90, facebook: 82, linkedin: 75, whatsapp: 60, youtube: 85 },
+    { metric: 'Response Time',   instagram: 45, facebook: 50, linkedin: 50, whatsapp: 95, youtube: 35 },
+    { metric: 'Conversion',      instagram: 55, facebook: 60, linkedin: 70, whatsapp: 82, youtube: 62 },
 ];

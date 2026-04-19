@@ -4,36 +4,82 @@ import { useState } from 'react';
 import { MetricKPI, ChartCard, AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from '@/components/charts/ChartComponents';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { geographyData, ageData } from '@/lib/stub-data/statistics';
+import { geographyData, ageData, channelStats as stubChannelStats, followerGrowthTrend as stubGrowthTrend } from '@/lib/stub-data/statistics';
 import { useAllChannelsData } from '@/lib/hooks/useAllChannelsData';
 import { PieChart, Pie, Cell } from 'recharts';
 import { Users, TrendingUp, Eye, MousePointerClick } from 'lucide-react';
+import { ChannelStats } from '@/types';
 
 const COLORS = ['#E5A100', '#4A90D9', '#50B88C', '#9B6AD4', '#C75B39', '#3AAFA9'];
+
+// Ordered to match the followerGrowthTrend array from the hook/stub:
+// index 0 = Instagram, 1 = LinkedIn, 2 = WhatsApp, 3 = YouTube, 4 = Facebook
+const CHANNEL_TAB_ORDER = ['instagram', 'linkedin', 'whatsapp', 'youtube', 'facebook'] as const;
+
+// Fallback aggregate stats when channelStats is empty
+const EMPTY_STATS: ChannelStats = {
+    channel: 'instagram',
+    followers: 0,
+    followerGrowth: 0,
+    engagement: 0,
+    engagementRate: 0,
+    impressions: 0,
+    reach: 0,
+    ctr: 0,
+};
 
 export default function StatisticsPage() {
     const [selectedChannel, setSelectedChannel] = useState<string>('all');
     const [dataType, setDataType] = useState<'all' | 'paid' | 'organic'>('all');
 
-    // Live data from stub server, falls back to static stubs if unavailable
+    // Live data from CSV endpoints; falls back to static stubs while loading / on error
     const { channelStats, followerGrowthTrend, loading } = useAllChannelsData();
 
-    const stats = selectedChannel === 'all'
-        ? {
-            followers: channelStats.reduce((s, c) => s + c.followers, 0),
-            followerGrowth: (channelStats.reduce((s, c) => s + c.followerGrowth, 0) / channelStats.length),
-            engagement: channelStats.reduce((s, c) => s + c.engagement, 0),
-            engagementRate: (channelStats.reduce((s, c) => s + c.engagementRate, 0) / channelStats.length),
-            impressions: channelStats.reduce((s, c) => s + c.impressions, 0),
-            reach: channelStats.reduce((s, c) => s + c.reach, 0),
-            ctr: (channelStats.reduce((s, c) => s + c.ctr, 0) / channelStats.length),
+    // ── Aggregate or per-channel KPI calculation ─────────────────────────────
+    const stats: ChannelStats = (() => {
+        if (selectedChannel === 'all') {
+            if (channelStats.length === 0) return EMPTY_STATS;
+            return {
+                channel: 'instagram',
+                followers:      channelStats.reduce((s, c) => s + c.followers, 0),
+                followerGrowth: channelStats.reduce((s, c) => s + c.followerGrowth, 0) / channelStats.length,
+                engagement:     channelStats.reduce((s, c) => s + c.engagement, 0),
+                engagementRate: channelStats.reduce((s, c) => s + c.engagementRate, 0) / channelStats.length,
+                impressions:    channelStats.reduce((s, c) => s + c.impressions, 0),
+                reach:          channelStats.reduce((s, c) => s + c.reach, 0),
+                ctr:            channelStats.reduce((s, c) => s + c.ctr, 0) / channelStats.length,
+            };
         }
-        : channelStats.find(c => c.channel === selectedChannel)!;
+        return (
+            channelStats.find(c => c.channel === selectedChannel) ??
+            stubChannelStats.find(c => c.channel === selectedChannel) ??
+            EMPTY_STATS
+        );
+    })();
 
-    const growthIdx = selectedChannel === 'all' ? -1 : ['instagram', 'linkedin', 'whatsapp', 'youtube'].indexOf(selectedChannel);
+    // ── Growth chart data ─────────────────────────────────────────────────────
+    // Resolve the gradient trend for the selected channel.
+    // CHANNEL_TAB_ORDER matches the followerGrowthTrend array order.
+    const growthIdx = selectedChannel === 'all'
+        ? -1
+        : CHANNEL_TAB_ORDER.indexOf(selectedChannel as typeof CHANNEL_TAB_ORDER[number]);
+
+    // Safely get the trend series for the selected channel
+    const selectedTrend = growthIdx >= 0 ? (followerGrowthTrend[growthIdx] ?? null) : null;
+
     const growthData = selectedChannel === 'all'
-        ? followerGrowthTrend[0].data.map((p, i) => ({ date: p.date.slice(5), Instagram: followerGrowthTrend[0].data[i].value, LinkedIn: followerGrowthTrend[1].data[i].value, WhatsApp: followerGrowthTrend[2].data[i].value, YouTube: followerGrowthTrend[3].data[i].value }))
-        : followerGrowthTrend[growthIdx].data.map(p => ({ date: p.date.slice(5), [followerGrowthTrend[growthIdx].label]: p.value }));
+        ? (followerGrowthTrend[0]?.data ?? stubGrowthTrend[0]?.data ?? []).map((p, i) => ({
+            date:      p.date.slice(5),
+            Instagram: followerGrowthTrend[0]?.data?.[i]?.value ?? 0,
+            LinkedIn:  followerGrowthTrend[1]?.data?.[i]?.value ?? 0,
+            WhatsApp:  followerGrowthTrend[2]?.data?.[i]?.value ?? 0,
+            YouTube:   followerGrowthTrend[3]?.data?.[i]?.value ?? 0,
+            Facebook:  followerGrowthTrend[4]?.data?.[i]?.value ?? 0,
+        }))
+        : (selectedTrend?.data ?? []).map(p => ({
+            date: p.date.slice(5),
+            [selectedTrend!.label]: p.value,
+        }));
 
     return (
         <div className="space-y-6">
@@ -47,6 +93,7 @@ export default function StatisticsPage() {
                         <TabsList className="bg-stone-100">
                             <TabsTrigger value="all">All</TabsTrigger>
                             <TabsTrigger value="instagram">Instagram</TabsTrigger>
+                            <TabsTrigger value="facebook">Facebook</TabsTrigger>
                             <TabsTrigger value="linkedin">LinkedIn</TabsTrigger>
                             <TabsTrigger value="whatsapp">WhatsApp</TabsTrigger>
                             <TabsTrigger value="youtube">YouTube</TabsTrigger>
@@ -64,34 +111,51 @@ export default function StatisticsPage() {
 
             {/* KPI Cards */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                <MetricKPI label="Followers" value={loading ? '…' : stats.followers} change={stats.followerGrowth} changeLabel="growth" icon={<Users className="h-5 w-5" />} />
-                <MetricKPI label="Engagement Rate" value={loading ? '…' : `${stats.engagementRate.toFixed(1)}%`} change={1.2} icon={<TrendingUp className="h-5 w-5" />} />
-                <MetricKPI label="Total Impressions" value={loading ? '…' : stats.impressions} change={8.5} icon={<Eye className="h-5 w-5" />} />
-                <MetricKPI label="CTR" value={loading ? '…' : `${stats.ctr.toFixed(1)}%`} change={-0.2} icon={<MousePointerClick className="h-5 w-5" />} />
+                <MetricKPI label="Followers"        value={loading ? '…' : stats.followers}                        change={stats.followerGrowth} changeLabel="growth"       icon={<Users className="h-5 w-5" />} />
+                <MetricKPI label="Engagement Rate"  value={loading ? '…' : `${stats.engagementRate.toFixed(1)}%`}  change={1.2}                                             icon={<TrendingUp className="h-5 w-5" />} />
+                <MetricKPI label="Total Impressions" value={loading ? '…' : stats.impressions}                     change={8.5}                                             icon={<Eye className="h-5 w-5" />} />
+                <MetricKPI label="CTR"              value={loading ? '…' : `${stats.ctr.toFixed(1)}%`}             change={-0.2}                                            icon={<MousePointerClick className="h-5 w-5" />} />
             </div>
 
             {/* Follower Growth Chart */}
             <ChartCard title="Follower Growth" description="Growth trend over the past 3 months">
                 <div className="h-72">
-                    <ResponsiveContainer width="100%" height="100%">
-                        <AreaChart data={growthData}>
-                            <CartesianGrid strokeDasharray="3 3" stroke="#E7E5E4" />
-                            <XAxis dataKey="date" tick={{ fontSize: 11, fill: '#78716C' }} />
-                            <YAxis tick={{ fontSize: 11, fill: '#78716C' }} />
-                            <Tooltip contentStyle={{ borderRadius: 8, border: '1px solid #E7E5E4', fontSize: 12 }} />
-                            {selectedChannel === 'all' ? (
-                                <>
-                                    <Area type="monotone" dataKey="Instagram" stroke="#E4405F" fill="#E4405F" fillOpacity={0.1} strokeWidth={2} />
-                                    <Area type="monotone" dataKey="LinkedIn" stroke="#0A66C2" fill="#0A66C2" fillOpacity={0.1} strokeWidth={2} />
-                                    <Area type="monotone" dataKey="WhatsApp" stroke="#25D366" fill="#25D366" fillOpacity={0.1} strokeWidth={2} />
-                                    <Area type="monotone" dataKey="YouTube" stroke="#FF0000" fill="#FF0000" fillOpacity={0.1} strokeWidth={2} />
-                                </>
-                            ) : (
-                                <Area type="monotone" dataKey={followerGrowthTrend[growthIdx].label} stroke={followerGrowthTrend[growthIdx].color} fill={followerGrowthTrend[growthIdx].color} fillOpacity={0.15} strokeWidth={2} />
-                            )}
-                            <Legend />
-                        </AreaChart>
-                    </ResponsiveContainer>
+                    {loading ? (
+                        <div className="h-full flex items-center justify-center text-stone-400 text-sm animate-pulse">Loading live data…</div>
+                    ) : growthData.length === 0 ? (
+                        <div className="h-full flex items-center justify-center text-stone-400 text-sm">No growth data available — upload a CSV to populate this chart.</div>
+                    ) : (
+                        <ResponsiveContainer width="100%" height="100%">
+                            <AreaChart data={growthData}>
+                                <CartesianGrid strokeDasharray="3 3" stroke="#E7E5E4" />
+                                <XAxis dataKey="date" tick={{ fontSize: 11, fill: '#78716C' }} />
+                                <YAxis tick={{ fontSize: 11, fill: '#78716C' }} />
+                                <Tooltip contentStyle={{ borderRadius: 8, border: '1px solid #E7E5E4', fontSize: 12 }} />
+                                {selectedChannel === 'all' ? (
+                                    <>
+                                        <Area type="monotone" dataKey="Instagram" stroke="#E4405F" fill="#E4405F" fillOpacity={0.1} strokeWidth={2} />
+                                        <Area type="monotone" dataKey="Facebook"  stroke="#1877F2" fill="#1877F2" fillOpacity={0.1} strokeWidth={2} />
+                                        <Area type="monotone" dataKey="LinkedIn"  stroke="#0A66C2" fill="#0A66C2" fillOpacity={0.1} strokeWidth={2} />
+                                        <Area type="monotone" dataKey="WhatsApp"  stroke="#25D366" fill="#25D366" fillOpacity={0.1} strokeWidth={2} />
+                                        <Area type="monotone" dataKey="YouTube"   stroke="#FF0000" fill="#FF0000" fillOpacity={0.1} strokeWidth={2} />
+                                        <Legend />
+                                    </>
+                                ) : selectedTrend ? (
+                                    <>
+                                        <Area
+                                            type="monotone"
+                                            dataKey={selectedTrend.label}
+                                            stroke={selectedTrend.color}
+                                            fill={selectedTrend.color}
+                                            fillOpacity={0.15}
+                                            strokeWidth={2}
+                                        />
+                                        <Legend />
+                                    </>
+                                ) : null}
+                            </AreaChart>
+                        </ResponsiveContainer>
+                    )}
                 </div>
             </ChartCard>
 

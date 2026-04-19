@@ -53,6 +53,20 @@ export const channelStats: ChannelStats[] = [
         paidImpressions: 92000,
         organicImpressions: 250000,
     },
+    {
+        channel: 'facebook',
+        followers: 22800,
+        followerGrowth: 4.6,
+        engagement: 2740,
+        engagementRate: 3.8,
+        impressions: 124000,
+        reach: 71000,
+        ctr: 1.9,
+        paidReach: 28000,
+        organicReach: 43000,
+        paidImpressions: 48000,
+        organicImpressions: 76000,
+    },
 ];
 
 export const followerGrowthTrend: TimeSeries[] = [
@@ -98,6 +112,17 @@ export const followerGrowthTrend: TimeSeries[] = [
             { date: '2026-02-01', value: 7600 },
             { date: '2026-02-15', value: 8100 },
             { date: '2026-03-01', value: 8750 },
+        ],
+    },
+    {
+        label: 'Facebook',
+        color: '#1877F2',
+        data: [
+            { date: '2026-01-01', value: 18500 },
+            { date: '2026-01-15', value: 19200 },
+            { date: '2026-02-01', value: 20100 },
+            { date: '2026-02-15', value: 21400 },
+            { date: '2026-03-01', value: 22800 },
         ],
     },
 ];

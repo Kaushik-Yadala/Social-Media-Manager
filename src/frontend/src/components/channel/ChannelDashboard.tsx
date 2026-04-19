@@ -520,8 +520,11 @@ export function ChannelDashboard({ channel, channelName, channelColor, channelIc
     }, [posts, typeFilter, searchQ, sortBy]);
 
     const stats = liveStats || channelStats.find(s => s.channel === channel) || null;
-    const chIdx = ['instagram', 'linkedin', 'whatsapp', 'youtube'].indexOf(channel);
-    const growthData = (liveGrowth || followerGrowthTrend[chIdx]?.data || [])
+    // CHANNEL_TAB_ORDER matches the stub followerGrowthTrend array order:
+    // [Instagram=0, LinkedIn=1, WhatsApp=2, YouTube=3, Facebook=4]
+    const GROWTH_TREND_ORDER = ['instagram', 'linkedin', 'whatsapp', 'youtube', 'facebook'];
+    const chIdx = GROWTH_TREND_ORDER.indexOf(channel);
+    const growthData = (liveGrowth || (chIdx >= 0 ? followerGrowthTrend[chIdx]?.data : null) || [])
         .map(p => ({ date: p.date.slice(5), value: p.value }));
     const postTypes = channel === 'instagram' ? ['feed', 'reel', 'story', 'carousel'] : channel === 'linkedin' ? ['post', 'article', 'document', 'video'] : channel === 'youtube' ? ['video', 'short', 'live', 'premiere'] : ['template', 'session', 'interactive'];
 
@@ -554,7 +557,9 @@ export function ChannelDashboard({ channel, channelName, channelColor, channelIc
                     </div>
                     <div>
                         <h1 className="text-2xl font-heading font-bold text-stone-900">{channelName}</h1>
-                        <p className="text-sm text-stone-500">{stats?.followers.toLocaleString()} {channel === 'youtube' ? 'subscribers' : 'followers'} · {stats?.engagementRate}% engagement rate</p>
+                        <p className="text-sm text-stone-500">
+                            {stats ? stats.followers.toLocaleString() : '…'} {channel === 'youtube' ? 'subscribers' : 'followers'} · {stats ? `${stats.engagementRate}%` : '…'} engagement rate
+                        </p>
                     </div>
                 </div>
                 <div className="flex gap-2">

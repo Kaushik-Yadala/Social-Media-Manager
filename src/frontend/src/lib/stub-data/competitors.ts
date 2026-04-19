@@ -1,5 +1,19 @@
 import { Competitor } from '@/types';
 
+// ── Club Artizen baseline stubs ───────────────────────────────────────────────
+// These are used ONLY when the live useAllChannelsData hook hasn't resolved yet.
+// The competitors page replaces these fields with live data at runtime.
+export const CLUB_ARTIZEN_STUB = {
+    instagram: 28400,
+    facebook: 22800,
+    linkedin: 12300,
+    youtube: 8750,
+    engagement: 4.8,
+    postsPerWeek: 10,
+    growth: 5.2,
+};
+
+// ── Competitor stubs ──────────────────────────────────────────────────────────
 export const competitors: Competitor[] = [
     {
         id: 'comp-1',
