@@ -1,6 +1,7 @@
 fastapi
 uvicorn[standard]
 motor
+certifi
 pytest
 pydantic
 pydantic-settings
@@ -15,3 +16,6 @@ python-jose[cryptography]
 python-multipart
 pydantic[email]
 xlrd==2.0.1
+beautifulsoup4
+google-genai
+apscheduler

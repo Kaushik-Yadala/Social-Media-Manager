@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -9,22 +9,33 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { ChartCard, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from '@/components/charts/ChartComponents';
-import { competitors, CLUB_ARTIZEN_STUB } from '@/lib/stub-data/competitors';
+import { competitors as initialCompetitors, CLUB_ARTIZEN_STUB } from '@/lib/stub-data/competitors';
 import { useAllChannelsData } from '@/lib/hooks/useAllChannelsData';
-import { Plus, Award, Wifi, WifiOff } from 'lucide-react';
+import { getCompetitors, refreshCompetitors } from '@/lib/api/competitors-api';
+import { Plus, Award, Wifi, WifiOff, RefreshCw, Loader2 } from 'lucide-react';
 import { Competitor } from '@/types';
 
-const trendColors = ['#E4405F', '#0A66C2', '#9B6AD4', '#50B88C'];
+const trendColors = ['#E4405F', '#0A66C2', '#9B6AD4', '#50B88C', '#E5A100', '#C75B39'];
+
+const sourceStyles: Record<string, { label: string; className: string }> = {
+    live: { label: '🟢 Live Data', className: 'bg-emerald-100 text-emerald-700 border-emerald-200' },
+    cache: { label: ' Cached', className: 'bg-blue-100 text-blue-700 border-blue-200' },
+    fallback: { label: '📊 Sample Data', className: 'bg-stone-100 text-stone-600 border-stone-200' },
+};
 
 export default function CompetitorsPage() {
-    const [selected, setSelected] = useState<string[]>(competitors.map(c => c.id));
-    const [compList, setCompList] = useState<Competitor[]>(competitors);
+    // ── Competitor API State ────────────────────────────────────────────────
+    const [compList, setCompList] = useState<Competitor[]>([]);
+    const [selected, setSelected] = useState<string[]>([]);
+    const [compLoading, setCompLoading] = useState(true);
+    const [refreshing, setRefreshing] = useState(false);
+    const [dataSource, setDataSource] = useState<string>('fallback');
+    const [lastUpdated, setLastUpdated] = useState<string>('');
 
-    // ── Live data for Club Artizen's own row ─────────────────────────────────
-    // channelStats is initialised with stub data and updated with CSV data when available.
-    const { channelStats, followerGrowthTrend, loading } = useAllChannelsData();
+    // ── Live data for Club Artizen's own row ────────────────────────────────
+    const { channelStats, followerGrowthTrend, loading: artizenLoading } = useAllChannelsData();
 
-    // Derive Club Artizen's metrics from live data (falls back gracefully to stubs)
+    // Derive Club Artizen's metrics from live data (falls back to stubs)
     const igStats  = channelStats.find(s => s.channel === 'instagram');
     const fbStats  = channelStats.find(s => s.channel === 'facebook');
     const liStats  = channelStats.find(s => s.channel === 'linkedin');
@@ -35,29 +46,56 @@ export default function CompetitorsPage() {
     const artizenLinkedIn   = liStats?.followers   ?? CLUB_ARTIZEN_STUB.linkedin;
     const artizenYouTube    = ytStats?.followers   ?? CLUB_ARTIZEN_STUB.youtube;
 
-    // Average engagement rate across all channels that have data
-    const engRates = [igStats, fbStats, liStats, ytStats]
-        .filter(Boolean)
-        .map(s => s!.engagementRate);
+    const engRates = [igStats, fbStats, liStats, ytStats].filter(Boolean).map(s => s!.engagementRate);
     const artizenEngagement = engRates.length > 0
         ? Number((engRates.reduce((a, b) => a + b, 0) / engRates.length).toFixed(1))
         : CLUB_ARTIZEN_STUB.engagement;
 
-    // Average follower growth rate
-    const growthRates = [igStats, fbStats, liStats]
-        .filter(Boolean)
-        .map(s => s!.followerGrowth);
+    const growthRates = [igStats, fbStats, liStats].filter(Boolean).map(s => s!.followerGrowth);
     const artizenGrowth = growthRates.length > 0
         ? Number((growthRates.reduce((a, b) => a + b, 0) / growthRates.length).toFixed(1))
         : CLUB_ARTIZEN_STUB.growth;
 
-    // Club Artizen's IG follower growth series (from CSV if available, else stub)
-    // followerGrowthTrend[0] = Instagram series (matches CHANNEL_TAB_ORDER in hook)
     const artizenIgGrowthSeries = (followerGrowthTrend[0]?.data ?? []).map(p => p.value);
+    const hasLiveData = !artizenLoading && (igStats || fbStats || liStats) !== undefined;
 
-    // Whether any live data is present
-    const hasLiveData = !loading && (igStats || fbStats || liStats) !== undefined;
+    // ── Fetch Competitor Data API ───────────────────────────────────────────
+    const fetchData = useCallback(async () => {
+        setCompLoading(true);
+        try {
+            const result = await getCompetitors();
+            setCompList(result.competitors);
+            setSelected(result.competitors.map(c => c.id));
+            setDataSource(result.source);
+            setLastUpdated(result.lastUpdated);
+        } catch {
+            // FALLBACK TO STUBS if the API fails
+            setCompList(initialCompetitors);
+            setSelected(initialCompetitors.map(c => c.id));
+            setDataSource('fallback');
+        } finally {
+            setCompLoading(false);
+        }
+    }, []);
 
+    useEffect(() => {
+        fetchData();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    const handleRefresh = async () => {
+        setRefreshing(true);
+        try {
+            await refreshCompetitors();
+            await fetchData();
+        } catch {
+            // Refresh failed — data stays as-is
+        } finally {
+            setRefreshing(false);
+        }
+    };
+
+    // ── Derived Chart & Insight Data ────────────────────────────────────────
     const filtered = compList.filter(c => selected.includes(c.id));
 
     const growthData = filtered[0]?.growthTrend.map((_, i) => {
@@ -65,6 +103,7 @@ export default function CompetitorsPage() {
             date: filtered[0].growthTrend[i].date.slice(5),
         };
         filtered.forEach(c => { point[c.name] = c.growthTrend[i]?.value ?? 0; });
+        
         // Club Artizen: use live Instagram follower growth series, or stub
         const stubArtizenValues = [24200, 25400, 26800, 27600, 28400];
         point['Club Artizen'] = artizenIgGrowthSeries[i] ?? stubArtizenValues[i] ?? 0;
@@ -75,9 +114,33 @@ export default function CompetitorsPage() {
         setSelected(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
     };
 
-    // Determine the best competitor by engagement for the insight callout
     const bestComp = [...filtered].sort((a, b) => b.metrics.engagement - a.metrics.engagement)[0];
+    const sourceInfo = sourceStyles[dataSource] || sourceStyles.fallback;
 
+    // ── Loading State ───────────────────────────────────────────────────────
+    if (compLoading) {
+        return (
+            <div className="space-y-6">
+                <div>
+                    <h1 className="text-2xl font-heading font-bold text-stone-900">Competitors</h1>
+                    <p className="text-sm text-stone-500 mt-1">Loading competitor data…</p>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                    {[1, 2, 3].map(i => (
+                        <Card key={i} className="animate-pulse">
+                            <CardContent className="pt-4 pb-3">
+                                <div className="h-4 bg-stone-200 rounded w-1/3 mb-3" />
+                                <div className="h-5 bg-stone-200 rounded w-2/3 mb-2" />
+                                <div className="h-3 bg-stone-100 rounded w-1/2" />
+                            </CardContent>
+                        </Card>
+                    ))}
+                </div>
+            </div>
+        );
+    }
+
+    // ── Main Render ─────────────────────────────────────────────────────────
     return (
         <div className="space-y-6">
             <div className="flex items-center justify-between">
@@ -86,7 +149,7 @@ export default function CompetitorsPage() {
                     <p className="text-sm text-stone-500 mt-1">Track and compare against your competitors.</p>
                 </div>
                 <div className="flex items-center gap-3">
-                    {/* Live data indicator */}
+                    {/* Club Artizen Live Data Indicator */}
                     <div className={`flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full ${hasLiveData
                         ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
                         : 'bg-stone-100 text-stone-500 border border-stone-200'
@@ -96,6 +159,23 @@ export default function CompetitorsPage() {
                             : <><WifiOff className="h-3 w-3" /> Using stub data</>
                         }
                     </div>
+
+                    {/* Competitor API Status Indicator */}
+                    <Badge variant="outline" className={`text-xs ${sourceInfo.className}`}>
+                        {sourceInfo.label}
+                    </Badge>
+
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleRefresh}
+                        disabled={refreshing}
+                        className="text-xs"
+                    >
+                        {refreshing ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <RefreshCw className="mr-1 h-3 w-3" />}
+                        Refresh
+                    </Button>
+
                     <Dialog>
                         <DialogTrigger asChild>
                             <Button className="bg-gradient-to-r from-amber-500 to-orange-600 text-white">
@@ -157,26 +237,26 @@ export default function CompetitorsPage() {
                                     )}
                                 </TableCell>
                                 <TableCell className="text-right font-medium">
-                                    {loading ? '…' : artizenInstagram.toLocaleString()}
+                                    {artizenLoading ? '…' : artizenInstagram.toLocaleString()}
                                 </TableCell>
                                 <TableCell className="text-right font-medium">
-                                    {loading ? '…' : artizenFacebook.toLocaleString()}
+                                    {artizenLoading ? '…' : artizenFacebook.toLocaleString()}
                                 </TableCell>
                                 <TableCell className="text-right font-medium">
-                                    {loading ? '…' : artizenLinkedIn.toLocaleString()}
+                                    {artizenLoading ? '…' : artizenLinkedIn.toLocaleString()}
                                 </TableCell>
                                 <TableCell className="text-right font-medium">
-                                    {loading ? '…' : artizenYouTube.toLocaleString()}
+                                    {artizenLoading ? '…' : artizenYouTube.toLocaleString()}
                                 </TableCell>
                                 <TableCell className="text-right font-medium">
-                                    {loading ? '…' : `${artizenEngagement}%`}
+                                    {artizenLoading ? '…' : `${artizenEngagement}%`}
                                 </TableCell>
                                 <TableCell className="text-right">
                                     {CLUB_ARTIZEN_STUB.postsPerWeek}
                                     <span className="text-[10px] text-stone-400 ml-1">(est.)</span>
                                 </TableCell>
                                 <TableCell className="text-right text-emerald-600 font-medium">
-                                    {loading ? '…' : `+${artizenGrowth}%`}
+                                    {artizenLoading ? '…' : `+${artizenGrowth}%`}
                                 </TableCell>
                             </TableRow>
 
@@ -184,10 +264,10 @@ export default function CompetitorsPage() {
                             {filtered.map(c => (
                                 <TableRow key={c.id}>
                                     <TableCell className="font-medium">{c.name}</TableCell>
-                                    <TableCell className="text-right">{c.metrics.instagram.toLocaleString()}</TableCell>
-                                    <TableCell className="text-right">{c.metrics.facebook.toLocaleString()}</TableCell>
-                                    <TableCell className="text-right">{c.metrics.linkedin.toLocaleString()}</TableCell>
-                                    <TableCell className="text-right">{c.metrics.youtube.toLocaleString()}</TableCell>
+                                    <TableCell className="text-right">{c.metrics.instagram?.toLocaleString() ?? '-'}</TableCell>
+                                    <TableCell className="text-right">{c.metrics.facebook?.toLocaleString() ?? '-'}</TableCell>
+                                    <TableCell className="text-right">{c.metrics.linkedin?.toLocaleString() ?? '-'}</TableCell>
+                                    <TableCell className="text-right">{c.metrics.youtube?.toLocaleString() ?? '-'}</TableCell>
                                     <TableCell className="text-right">{c.metrics.engagement}%</TableCell>
                                     <TableCell className="text-right">{c.metrics.postsPerWeek}</TableCell>
                                     <TableCell className="text-right text-emerald-600">+{c.metrics.growth}%</TableCell>
@@ -199,7 +279,7 @@ export default function CompetitorsPage() {
             </Card>
 
             {/* Growth Trends */}
-            <ChartCard title="Instagram Follower Growth Comparison" description="Club Artizen vs competitors — sourced from live CSV data when available">
+            <ChartCard title="Instagram Follower Growth Comparison" description="Club Artizen vs competitors — sourced from live data when available">
                 <div className="h-72">
                     {growthData.length === 0 ? (
                         <div className="h-full flex items-center justify-center text-stone-400 text-sm">
@@ -251,6 +331,13 @@ export default function CompetitorsPage() {
                         </div>
                     </CardContent>
                 </Card>
+            )}
+
+            {/* Last updated */}
+            {lastUpdated && (
+                <p className="text-[10px] text-stone-400 text-right">
+                    Last updated: {new Date(lastUpdated).toLocaleString()}
+                </p>
             )}
         </div>
     );
