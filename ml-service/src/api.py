@@ -4,7 +4,8 @@ import numpy as np
 import joblib
 import shap
 import os
-from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi import FastAPI, HTTPException
+from pymongo import MongoClient
 from pydantic import BaseModel
 from dotenv import load_dotenv
 from google import genai
@@ -17,6 +18,12 @@ from src.vector_store import retrieve_similar_posts
 
 # load environment variables
 load_dotenv()
+
+# connect to MongoDB Atlas
+MONGO_URI = os.getenv("MONGO_URI")
+mongo_client = MongoClient(MONGO_URI)
+db = mongo_client["social_media_db"]
+terms_collection = db["tracked_terms"]
 
 # configure Gemini API
 gemini_key = os.getenv("GEMINI_API_KEY")
@@ -36,13 +43,12 @@ class PostRequest(BaseModel):
     publish_time: str
     post_type: str
 
-class GenerateRequest(BaseModel):
-    topic: str
-    post_type: str
-
 class GenerateInsightRequest(BaseModel):
     # Optional: If empty, the system will auto-hunt for trends
     seed_keywords: list[str] = ["khadi", "block print", "sustainable packaging", "handmade"]
+
+class TermRequest(BaseModel):
+    term: str
 
 # on startup
 @app.on_event("startup")
@@ -173,3 +179,27 @@ def generate_trend_insight(req: GenerateInsightRequest):
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Gemini Generation failed: {str(e)}")
+    
+
+
+@app.post("/terms/add")
+def add_seed_term(request: TermRequest):
+    # Check if it already exists to avoid duplicates
+    existing = terms_collection.find_one({"term": request.term.lower()})
+    if existing:
+        return {"message": f"Term '{request.term}' is already being tracked."}
+        
+    terms_collection.insert_one({"term": request.term.lower(), "active": True})
+    return {"message": f"Successfully added '{request.term}' to the daily Watchtower list."}
+
+@app.get("/terms/list")
+def get_seed_terms():
+    terms = list(terms_collection.find({"active": True}, {"_id": 0, "term": 1}))
+    return {"tracked_terms": [t["term"] for t in terms]}
+
+@app.delete("/terms/remove")
+def remove_seed_term(request: TermRequest):
+    result = terms_collection.delete_one({"term": request.term.lower()})
+    if result.deleted_count > 0:
+         return {"message": f"Removed '{request.term}' from tracking."}
+    raise HTTPException(status_code=404, detail="Term not found.")
