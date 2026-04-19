@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+import certifi
 from contextlib import asynccontextmanager
 from motor.motor_asyncio import AsyncIOMotorClient
 from core.database import db
@@ -13,13 +14,24 @@ from routes.li_routes import router as li_router
 from routes.ig_routes import router as ig_router
 from routes.wa_routes import router as wa_router
 from routes.social_insights_routes import router as social_insights_router
+from routes.trends_routes import router as trends_router
+from routes.competitor_routes import router as competitor_router
+from services.scheduler import trends_scheduler
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup
-    db.client = AsyncIOMotorClient(settings.mongodb_uri)
+    # Startup — DB first, then scheduler
+    # Use certifi's CA bundle to fix TLSV1_ALERT_INTERNAL_ERROR on Python 3.12
+    # with MongoDB Atlas (system CA bundle is incompatible with Atlas on some Linux distros)
+    db.client = AsyncIOMotorClient(
+        settings.mongodb_uri,
+        tlsCAFile=certifi.where(),
+        serverSelectionTimeoutMS=5000,   # fail fast instead of hanging 30s
+    )
+    await trends_scheduler.start()
     yield
     # Shutdown
+    await trends_scheduler.stop()
     db.client.close()
 
 app = FastAPI(
@@ -49,6 +61,8 @@ app.include_router(li_router)
 app.include_router(ig_router)
 app.include_router(wa_router)
 app.include_router(social_insights_router)
+app.include_router(trends_router)
+app.include_router(competitor_router)
 
 
 # ── Root / Health ─────────────────────────────────────────────────────────────

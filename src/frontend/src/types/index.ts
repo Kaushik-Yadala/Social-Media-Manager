@@ -167,6 +167,8 @@ export interface TrendingTopic {
   change: number;
   confidence: number;
   signal: 'rising' | 'steady' | 'emerging';
+  sources?: string[]; // competitor names this trend was observed in
+  source?: 'ai' | 'competitor' | 'manual'; // provenance
 }
 
 export interface SuggestedAction {
@@ -176,6 +178,13 @@ export interface SuggestedAction {
   description: string;
   channel: ChannelSlug;
   expectedImpact: string;
+  relatedTrend?: string;
+}
+
+export interface CompetitorInsight {
+  competitorName: string;
+  observation: string;
+  opportunity: string;
 }
 
 // --- Posts (Instagram, LinkedIn, WhatsApp) ---

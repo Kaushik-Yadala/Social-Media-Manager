@@ -41,6 +41,15 @@ class Settings(BaseSettings):
     algorithm: str = "HS256"
     access_token_expire_minutes: int = 60 * 24 * 7 # 7 days
 
+    # Gemini AI (for competitor trend analysis)
+    gemini_api_key: str = ""
+
+    # Groq AI (free alternative — fallback when Gemini quota is exhausted)
+    groq_api_key: str = ""
+
+    # Scheduled scraping interval (hours)
+    scrape_interval_hours: int = 6
+
     # App
     app_env: str = "development"
     cors_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
@@ -74,5 +83,16 @@ class Settings(BaseSettings):
         """Comma-separated origins from env into a FastAPI-compatible list."""
         return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
 
+    @property
+    def gemini_available(self) -> bool:
+        """True when a Gemini API key is set."""
+        return bool(self.gemini_api_key)
+
+    @property
+    def groq_available(self) -> bool:
+        """True when a Groq API key is set."""
+        return bool(self.groq_api_key)
+
 
 settings = Settings()
+
