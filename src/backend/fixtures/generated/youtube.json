@@ -1,14 +1,14 @@
 {
   "overview": {
-    "subscribers": 42432,
-    "total_views": 945161,
+    "subscribers": 8750,
+    "total_views": 1245600,
     "total_videos": 206,
-    "watch_time_hours": 12394,
+    "watch_time_hours": 52400,
     "avg_view_duration": 143.7,
     "engagement_rate": 10.6,
     "estimated_revenue": 7381.81,
-    "subscriber_delta_30d": 308,
-    "views_delta_30d": 43944,
+    "subscriber_delta_30d": 1530,
+    "views_delta_30d": 372400,
     "date_range": {
       "start_date": "2026-03-08",
       "end_date": "2026-04-06"
@@ -18,126 +18,126 @@
     "series": [
       {
         "date": "2026-03-08",
-        "value": 4478
+        "value": 22553
       },
       {
         "date": "2026-03-09",
-        "value": 4409
+        "value": 22205
       },
       {
         "date": "2026-03-10",
-        "value": 1029
+        "value": 5182
       },
       {
         "date": "2026-03-11",
-        "value": 4868
+        "value": 24517
       },
       {
         "date": "2026-03-12",
-        "value": 536
+        "value": 2699
       },
       {
         "date": "2026-03-13",
-        "value": 620
+        "value": 3123
       },
       {
         "date": "2026-03-14",
-        "value": 4764
+        "value": 23993
       },
       {
         "date": "2026-03-15",
-        "value": 3347
+        "value": 16857
       },
       {
         "date": "2026-03-16",
-        "value": 601
+        "value": 3027
       },
       {
         "date": "2026-03-17",
-        "value": 3288
+        "value": 16560
       },
       {
         "date": "2026-03-18",
-        "value": 1262
+        "value": 6356
       },
       {
         "date": "2026-03-19",
-        "value": 4465
+        "value": 22487
       },
       {
         "date": "2026-03-20",
-        "value": 1249
+        "value": 6290
       },
       {
         "date": "2026-03-21",
-        "value": 3024
+        "value": 15230
       },
       {
         "date": "2026-03-22",
-        "value": 1864
+        "value": 9388
       },
       {
         "date": "2026-03-23",
-        "value": 2709
+        "value": 13644
       },
       {
         "date": "2026-03-24",
-        "value": 862
+        "value": 4341
       },
       {
         "date": "2026-03-25",
-        "value": 2340
+        "value": 11785
       },
       {
         "date": "2026-03-26",
-        "value": 1758
+        "value": 8854
       },
       {
         "date": "2026-03-27",
-        "value": 4281
+        "value": 21561
       },
       {
         "date": "2026-03-28",
-        "value": 3043
+        "value": 15326
       },
       {
         "date": "2026-03-29",
-        "value": 750
+        "value": 3777
       },
       {
         "date": "2026-03-30",
-        "value": 694
+        "value": 3495
       },
       {
         "date": "2026-03-31",
-        "value": 3296
+        "value": 16600
       },
       {
         "date": "2026-04-01",
-        "value": 1272
+        "value": 6406
       },
       {
         "date": "2026-04-02",
-        "value": 635
+        "value": 3198
       },
       {
         "date": "2026-04-03",
-        "value": 3967
+        "value": 19979
       },
       {
         "date": "2026-04-04",
-        "value": 4593
+        "value": 23132
       },
       {
         "date": "2026-04-05",
-        "value": 2321
+        "value": 11689
       },
       {
         "date": "2026-04-06",
-        "value": 1617
+        "value": 8146
       }
     ],
-    "total": 768819,
+    "total": 372400,
     "granularity": "day"
   },
   "subscriber_growth": {
@@ -323,7 +323,9 @@
         "net": 42
       }
     ],
-    "net_change": 358
+    "net_change": 856,
+    "total_gained": 1069,
+    "total_lost": 213
   },
   "watch_time": {
     "series": [
@@ -448,7 +450,7 @@
         "value": 86.33
       }
     ],
-    "total_hours": 8753,
+    "total_hours": 5780.8,
     "avg_view_duration": 344.5,
     "granularity": "day"
   },
@@ -631,10 +633,10 @@
     "total_likes": 39924,
     "total_comments": 5307,
     "total_shares": 1210,
-    "likes_per_view": 0.0586,
-    "comments_per_view": 0.0038,
-    "shares_per_view": 0.0012,
-    "avg_engagement_rate": 10.22
+    "likes_per_view": 0.1072,
+    "comments_per_view": 0.0143,
+    "shares_per_view": 0.0032,
+    "avg_engagement_rate": 12.47
   },
   "revenue": {
     "series": [
@@ -843,6 +845,8 @@
         "avg_engagement_rate": 5.9,
         "subscribers_gained": 2037
       }
-    ]
+    ],
+    "total_views": 371879,
+    "total_watch_hours": 23872
   }
 }
