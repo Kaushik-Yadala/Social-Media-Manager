@@ -12,14 +12,14 @@ import { ChartCard, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Respo
 import { competitors as initialCompetitors, CLUB_ARTIZEN_STUB } from '@/lib/stub-data/competitors';
 import { useAllChannelsData } from '@/lib/hooks/useAllChannelsData';
 import { getCompetitors, refreshCompetitors } from '@/lib/api/competitors-api';
-import { Plus, Award, Wifi, WifiOff, RefreshCw, Loader2 } from 'lucide-react';
+import { Plus, Award, Wifi, WifiOff, RefreshCw, Loader2, TrendingUp } from 'lucide-react';
 import { Competitor } from '@/types';
 
 const trendColors = ['#E4405F', '#0A66C2', '#9B6AD4', '#50B88C', '#E5A100', '#C75B39'];
 
 const sourceStyles: Record<string, { label: string; className: string }> = {
     live: { label: '🟢 Live Data', className: 'bg-emerald-100 text-emerald-700 border-emerald-200' },
-    cache: { label: ' Cached', className: 'bg-blue-100 text-blue-700 border-blue-200' },
+    cache: { label: 'Cached', className: 'bg-blue-100 text-blue-700 border-blue-200' },
     fallback: { label: '📊 Sample Data', className: 'bg-stone-100 text-stone-600 border-stone-200' },
 };
 
@@ -114,7 +114,9 @@ export default function CompetitorsPage() {
         setSelected(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
     };
 
+    // Calculate insights
     const bestComp = [...filtered].sort((a, b) => b.metrics.engagement - a.metrics.engagement)[0];
+    const fastestComp = [...filtered].sort((a, b) => b.metrics.growth - a.metrics.growth)[0];
     const sourceInfo = sourceStyles[dataSource] || sourceStyles.fallback;
 
     // ── Loading State ───────────────────────────────────────────────────────
@@ -311,26 +313,43 @@ export default function CompetitorsPage() {
                 </div>
             </ChartCard>
 
-            {/* Dynamic Insight Callout */}
-            {bestComp && (
-                <Card className="border-amber-200 bg-amber-50/50">
-                    <CardContent className="py-4">
-                        <div className="flex items-start gap-3">
-                            <Award className="h-5 w-5 text-amber-600 mt-0.5 shrink-0" />
-                            <div>
-                                <p className="text-sm font-medium text-amber-900">Competitive Insight</p>
-                                <p className="text-xs text-amber-700 mt-1">
-                                    <strong>{bestComp.name}</strong> leads with {bestComp.metrics.engagement}% engagement
-                                    — {bestComp.metrics.postsPerWeek} posts/week vs your {CLUB_ARTIZEN_STUB.postsPerWeek}.
-                                    {bestComp.metrics.engagement > artizenEngagement
-                                        ? ` They outperform your current ${artizenEngagement}% avg engagement rate by ${(bestComp.metrics.engagement - artizenEngagement).toFixed(1)}pp. Consider increasing video content frequency to close the gap.`
-                                        : ` You are outperforming them on engagement (${artizenEngagement}% vs ${bestComp.metrics.engagement}%). Keep up the content quality.`
-                                    }
-                                </p>
+            {/* Dynamic Insight Callouts Combined */}
+            {filtered.length > 0 && bestComp && fastestComp && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <Card className="border-amber-200 bg-amber-50/50">
+                        <CardContent className="py-4">
+                            <div className="flex items-start gap-3">
+                                <Award className="h-5 w-5 text-amber-600 mt-0.5 shrink-0" />
+                                <div>
+                                    <p className="text-sm font-medium text-amber-900">Your Standing</p>
+                                    <p className="text-xs text-amber-700 mt-1">
+                                        <strong>{bestComp.name}</strong> leads with {bestComp.metrics.engagement}% engagement
+                                        — {bestComp.metrics.postsPerWeek} posts/week vs your {CLUB_ARTIZEN_STUB.postsPerWeek}.
+                                        {bestComp.metrics.engagement > artizenEngagement
+                                            ? ` They outperform your current ${artizenEngagement}% avg engagement rate. Consider increasing content frequency to close the gap.`
+                                            : ` You are outperforming them on engagement (${artizenEngagement}% vs ${bestComp.metrics.engagement}%). Keep up the great work!`
+                                        }
+                                    </p>
+                                </div>
                             </div>
-                        </div>
-                    </CardContent>
-                </Card>
+                        </CardContent>
+                    </Card>
+
+                    <Card className="border-emerald-200 bg-emerald-50/50">
+                        <CardContent className="py-4">
+                            <div className="flex items-start gap-3">
+                                <TrendingUp className="h-5 w-5 text-emerald-600 mt-0.5 shrink-0" />
+                                <div>
+                                    <p className="text-sm font-medium text-emerald-900">Market Movers</p>
+                                    <p className="text-xs text-emerald-700 mt-1">
+                                        <strong>{fastestComp.name}</strong> is currently growing the fastest at a rate of +{fastestComp.metrics.growth}%. 
+                                        Meanwhile, <strong>{bestComp.name}</strong> captures the highest audience interaction at {bestComp.metrics.engagement}% engagement.
+                                    </p>
+                                </div>
+                            </div>
+                        </CardContent>
+                    </Card>
+                </div>
             )}
 
             {/* Last updated */}

@@ -32,7 +32,7 @@ const priorityColors: Record<string, string> = {
 
 const sourceStyles: Record<string, { label: string; className: string }> = {
     ai: { label: '🤖 AI-Powered', className: 'bg-purple-100 text-purple-700 border-purple-200' },
-    cache: { label: '⚡ Cached', className: 'bg-blue-100 text-blue-700 border-blue-200' },
+    cache: { label: 'Cached', className: 'bg-blue-100 text-blue-700 border-blue-200' },
     fallback: { label: '📊 Sample Data', className: 'bg-stone-100 text-stone-600 border-stone-200' },
 };
 
