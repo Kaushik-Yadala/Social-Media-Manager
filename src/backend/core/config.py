@@ -15,6 +15,12 @@ class Settings(BaseSettings):
     youtube_api_key: str = ""
     youtube_channel_id: str = ""
 
+    # YouTube Analytics API (OAuth 2.0)
+    youtube_client_id: str = ""
+    youtube_client_secret: str = ""
+    youtube_refresh_token: str = ""
+    youtube_token_uri: str = "https://oauth2.googleapis.com/token"
+
     # LinkedIn API
     linkedin_client_id: str = ""
     linkedin_client_secret: str = ""
@@ -67,6 +73,15 @@ class Settings(BaseSettings):
     def yt_credentials_available(self) -> bool:
         """True when a YouTube API key and channel ID are both set."""
         return bool(self.youtube_api_key and self.youtube_channel_id)
+
+    @property
+    def yt_analytics_credentials_available(self) -> bool:
+        """True when OAuth credentials for YouTube Analytics are configured."""
+        return bool(
+            self.youtube_client_id
+            and self.youtube_client_secret
+            and self.youtube_refresh_token
+        )
 
     @property
     def linkedin_credentials_available(self) -> bool:
