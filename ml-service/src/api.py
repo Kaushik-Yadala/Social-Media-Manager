@@ -160,6 +160,11 @@ def predict_engagement(post: PostRequest):
     try:
         X_polars, _ = engineer_features(df)
         X_pandas = X_polars.to_pandas()
+
+        # Catch silent nulls caused by bad date parsing
+        if X_pandas.isna().any().any():
+            raise ValueError("Invalid publish_time format.")
+
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Feature extraction failed: {str(e)}")
 
