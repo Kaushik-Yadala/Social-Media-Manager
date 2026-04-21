@@ -17,8 +17,8 @@ except ModuleNotFoundError:
 def trigger_retraining():
     print("Initiating automated model retraining...")
 
-    mongo_db_name = os.getenv("MONGO_DB_NAME", "social_media_db")
-    mongo_collection = os.getenv("MONGO_DB_IG_CLUSTER", "posts")
+    mongo_db_name = os.getenv("MONGO_DB_NAME")
+    mongo_collection = os.getenv("MONGO_DB_IG_CLUSTER")
 
     mongo_client = MongoClient(os.getenv("MONGO_URI"))
     db = mongo_client[mongo_db_name]
