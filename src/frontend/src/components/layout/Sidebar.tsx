@@ -46,7 +46,7 @@ const navigation: NavItem[] = [
             { label: 'Manual Uploads', href: '/channels/manual-upload', icon: FileUp },
         ],
     },
-    { label: 'Statistics', href: '/statistics', icon: BarChart3 },
+    { label: 'Comparative Statistics', href: '/statistics', icon: BarChart3 },
     { label: 'Analytics', href: '/analytics', icon: TrendingUp },
     { label: 'Website', href: '/website', icon: Globe },
     { label: 'Competitors', href: '/competitors', icon: Users },
