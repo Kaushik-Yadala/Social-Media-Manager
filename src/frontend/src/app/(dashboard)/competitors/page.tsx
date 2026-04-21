@@ -10,10 +10,12 @@ import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { ChartCard, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from '@/components/charts/ChartComponents';
 import { competitors as initialCompetitors, CLUB_ARTIZEN_STUB } from '@/lib/stub-data/competitors';
+import { competitorInsights as stubCompInsights } from '@/lib/stub-data/predictive';
 import { useAllChannelsData } from '@/lib/hooks/useAllChannelsData';
 import { getCompetitors, refreshCompetitors, addCompetitor, AddCompetitorPayload } from '@/lib/api/competitors-api';
-import { Plus, Award, Wifi, WifiOff, RefreshCw, Loader2, TrendingUp, Check, AlertCircle } from 'lucide-react';
-import { Competitor } from '@/types';
+import { getTrendsInsights, type TrendsInsightsResponse } from '@/lib/api/trends-api';
+import { Plus, Award, Wifi, WifiOff, RefreshCw, Loader2, TrendingUp, Check, AlertCircle, Eye, Users, Lightbulb } from 'lucide-react';
+import { Competitor, CompetitorInsight } from '@/types';
 
 const trendColors = ['#E4405F', '#0A66C2', '#9B6AD4', '#50B88C', '#E5A100', '#C75B39'];
 
@@ -31,6 +33,7 @@ export default function CompetitorsPage() {
     const [refreshing, setRefreshing] = useState(false);
     const [dataSource, setDataSource] = useState<string>('fallback');
     const [lastUpdated, setLastUpdated] = useState<string>('');
+    const [trendsData, setTrendsData] = useState<TrendsInsightsResponse | null>(null);
 
     // ── Add Competitor Form State ───────────────────────────────────────────
     const [isAddOpen, setIsAddOpen] = useState(false);
@@ -94,6 +97,14 @@ export default function CompetitorsPage() {
     useEffect(() => {
         fetchData();
         // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    useEffect(() => {
+        const loadTrendsInsights = async () => {
+            const result = await getTrendsInsights();
+            setTrendsData(result);
+        };
+        loadTrendsInsights().catch(() => setTrendsData(null));
     }, []);
 
     const handleRefresh = async () => {
@@ -167,6 +178,11 @@ export default function CompetitorsPage() {
     const bestComp = [...filtered].sort((a, b) => b.metrics.engagement - a.metrics.engagement)[0];
     const fastestComp = [...filtered].sort((a, b) => b.metrics.growth - a.metrics.growth)[0];
     const sourceInfo = sourceStyles[dataSource] || sourceStyles.fallback;
+    const compInsights: CompetitorInsight[] = trendsData?.competitor_insights?.map(ci => ({
+        competitorName: ci.competitor_name,
+        observation: ci.observation,
+        opportunity: ci.opportunity,
+    })) || stubCompInsights;
 
     // ── Loading State ───────────────────────────────────────────────────────
     if (compLoading) {
@@ -340,6 +356,32 @@ export default function CompetitorsPage() {
                         {c.name}
                     </Badge>
                 ))}
+            </div>
+
+            {/* Competitor Spotlight */}
+            <div>
+                <h2 className="text-sm font-medium text-stone-700 mb-3 flex items-center gap-2">
+                    <Eye className="h-4 w-4 text-amber-500" /> Competitor Spotlight
+                </h2>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    {compInsights.map((ci, idx) => (
+                        <Card key={idx} className="card-hover border-l-4 border-l-amber-400">
+                            <CardContent className="pt-4 pb-3">
+                                <div className="flex items-center gap-2 mb-2">
+                                    <Users className="h-4 w-4 text-stone-400" />
+                                    <span className="text-sm font-medium text-stone-800">{ci.competitorName}</span>
+                                </div>
+                                <p className="text-xs text-stone-500 leading-relaxed mb-3">{ci.observation}</p>
+                                <div className="p-2 rounded-md bg-emerald-50 border border-emerald-200">
+                                    <p className="text-xs text-emerald-700 font-medium flex items-center gap-1">
+                                        <Lightbulb className="h-3 w-3" /> Opportunity
+                                    </p>
+                                    <p className="text-xs text-emerald-600 mt-0.5">{ci.opportunity}</p>
+                                </div>
+                            </CardContent>
+                        </Card>
+                    ))}
+                </div>
             </div>
 
             {/* Comparison Table */}

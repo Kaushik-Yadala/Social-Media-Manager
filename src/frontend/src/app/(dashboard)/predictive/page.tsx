@@ -6,11 +6,11 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { ChartCard, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from '@/components/charts/ChartComponents';
-import { trendingTopics as stubTopics, suggestedActions as stubActions, trendGrowthTrajectory as stubTrajectory, competitorInsights as stubCompInsights } from '@/lib/stub-data/predictive';
+import { trendingTopics as stubTopics, suggestedActions as stubActions, trendGrowthTrajectory as stubTrajectory } from '@/lib/stub-data/predictive';
 import { competitors as stubCompetitors } from '@/lib/stub-data/competitors';
 import { getTrendsInsights, refreshTrends, getTrendsStatus, type TrendsInsightsResponse, type SchedulerStatus } from '@/lib/api/trends-api';
 import { getCompetitors, type CompetitorsResult } from '@/lib/api/competitors-api';
-import { Lightbulb, TrendingUp, Zap, ArrowRight, Sparkles, Target, Instagram, Linkedin, MessageCircle, RefreshCw, Eye, Users, Loader2, Facebook, Youtube, BarChart3 } from 'lucide-react';
+import { TrendingUp, Zap, ArrowRight, Sparkles, Target, Instagram, Linkedin, MessageCircle, RefreshCw, Loader2, Facebook, Youtube, BarChart3 } from 'lucide-react';
 
 const channelIcons: Record<string, React.ReactNode> = {
     instagram: <Instagram className="h-3.5 w-3.5" />,
@@ -108,12 +108,6 @@ export default function PredictivePage() {
         color: t.color,
         data: t.data,
     })) || stubTrajectory;
-
-    const compInsights = data?.competitor_insights?.map(ci => ({
-        competitorName: ci.competitor_name,
-        observation: ci.observation,
-        opportunity: ci.opportunity,
-    })) || stubCompInsights;
 
     const dataSource = data?.source || 'fallback';
     const sourceInfo = sourceStyles[dataSource] || sourceStyles.fallback;
@@ -229,32 +223,6 @@ export default function PredictivePage() {
                         {refreshing ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <RefreshCw className="mr-1 h-3 w-3" />}
                         Refresh
                     </Button>
-                </div>
-            </div>
-
-            {/* ── Competitor Spotlight ─────────────────────────────────── */}
-            <div>
-                <h2 className="text-sm font-medium text-stone-700 mb-3 flex items-center gap-2">
-                    <Eye className="h-4 w-4 text-amber-500" /> Competitor Spotlight
-                </h2>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                    {compInsights.map((ci, idx) => (
-                        <Card key={idx} className="card-hover border-l-4 border-l-amber-400">
-                            <CardContent className="pt-4 pb-3">
-                                <div className="flex items-center gap-2 mb-2">
-                                    <Users className="h-4 w-4 text-stone-400" />
-                                    <span className="text-sm font-medium text-stone-800">{ci.competitorName}</span>
-                                </div>
-                                <p className="text-xs text-stone-500 leading-relaxed mb-3">{ci.observation}</p>
-                                <div className="p-2 rounded-md bg-emerald-50 border border-emerald-200">
-                                    <p className="text-xs text-emerald-700 font-medium flex items-center gap-1">
-                                        <Lightbulb className="h-3 w-3" /> Opportunity
-                                    </p>
-                                    <p className="text-xs text-emerald-600 mt-0.5">{ci.opportunity}</p>
-                                </div>
-                            </CardContent>
-                        </Card>
-                    ))}
                 </div>
             </div>
 

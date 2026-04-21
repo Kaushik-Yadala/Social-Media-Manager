@@ -47,14 +47,18 @@ def engineer_features(df: pl.DataFrame) -> tuple[pl.DataFrame, pl.Series]:
     # turns "Post type" into binary columns: "Post type_IG reel", "Post type_IG image", etc.
     df = df.to_dummies(columns=["Post type"])
 
-    # separate the target we want to predict
-    y = df["Like_Rate"]
-
+    # extract target variable only when it carries real training data
+    has_target = "Like_Rate" in df.columns
+    y: pl.Series | None = df["Like_Rate"] if has_target else None
+    
     # select only our finalized numerical columns for the feature matrix
     cols_to_drop = [
         "Post ID", "Description", "Publish time", "Like_Rate", 
-        "desc_clean", "dt_parsed", "hour", "weekday"
+        "desc_clean", "dt_parsed", "hour", "weekday", "Date",
     ]
+
+    if has_target:
+        cols_to_drop.append("Like_Rate")
     
     # grab all columns that are not in the drop list
     feature_cols = [col for col in df.columns if col not in cols_to_drop]

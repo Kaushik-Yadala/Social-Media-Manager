@@ -37,7 +37,7 @@ def build_vector_db(historical_df: pl.DataFrame):
         doc = str(row["Description"])
         if not doc.strip(): continue
         
-        ids.append(f"post_{i}")
+        ids.append(str(row["Post ID"]))
         documents.append(doc)
         embeddings.append(embed_text(doc))
         
