@@ -7,33 +7,58 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
-import { channels } from '@/lib/stub-data/channels';
 import { mainDashboardWidgets } from '@/lib/stub-data/widgets';
 import { WidgetDefinition } from '@/types';
 import { useAllChannelsData } from '@/lib/hooks/useAllChannelsData';
-import { Users, Eye, TrendingUp, MousePointerClick, Plus, Instagram, Linkedin, MessageCircle, Youtube, ArrowRight, X, Facebook } from 'lucide-react';
+import { Users, Eye, TrendingUp, MousePointerClick, Plus, Instagram, Linkedin, ArrowRight, X, Facebook, Globe } from 'lucide-react';
 
 
 const channelIcons: Record<string, React.ReactNode> = {
     instagram: <Instagram className="h-4 w-4" />,
     facebook: <Facebook className="h-4 w-4" />,
     linkedin: <Linkedin className="h-4 w-4" />,
-    whatsapp: <MessageCircle className="h-4 w-4" />,
-    youtube: <Youtube className="h-4 w-4" />,
+    website: <Globe className="h-4 w-4" />,
 };
+
+const HEALTH_WIDGET_CHANNELS = [
+    { id: 'ch-ig', slug: 'instagram', name: 'Instagram', color: '#E4405F', href: '/channels/instagram' },
+    { id: 'ch-facebook', slug: 'facebook', name: 'Facebook', color: '#1877F2', href: '/channels/facebook' },
+    { id: 'ch-li', slug: 'linkedin', name: 'LinkedIn', color: '#0A66C2', href: '/channels/linkedin' },
+    { id: 'ch-web', slug: 'website', name: 'Website', color: '#4A90D9', href: '/channels/website' },
+] as const;
+
+const COMPARISON_CHANNEL_ORDER = ['instagram', 'facebook', 'linkedin', 'website'] as const;
+
+function safeRatio(numerator: number, denominator: number): number {
+    if (denominator <= 0) return 0;
+    return numerator / denominator;
+}
+
+function formatDateLabel(dateStr: string): string {
+    const parsed = new Date(`${dateStr}T00:00:00Z`);
+    if (Number.isNaN(parsed.getTime())) return dateStr;
+    return parsed.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: '2-digit' });
+}
+
+function titleCaseChannel(channel: string): string {
+    if (channel === 'linkedin') return 'LinkedIn';
+    return channel.charAt(0).toUpperCase() + channel.slice(1);
+}
 
 // ---- Renders widget content based on widget definition ----
 function DashboardWidgetContent({
     widget,
-    channelStats,
+    channelComparisonMetrics,
     dashboardSummary,
+    engagementTrendData,
 }: {
     widget: WidgetDefinition;
-    channelStats: ReturnType<typeof useAllChannelsData>['channelStats'];
+    channelComparisonMetrics: ReturnType<typeof useAllChannelsData>['channelComparisonMetrics'];
     dashboardSummary: ReturnType<typeof useAllChannelsData>['dashboardSummary'];
+    engagementTrendData: { date: string; dateLabel: string; value: number }[];
 }) {
-    const totalFollowers = channelStats.reduce((sum, s) => sum + s.followers, 0);
-    const totalReach = channelStats.reduce((sum, s) => sum + s.reach, 0);
+    const totalFollowers = channelComparisonMetrics.reduce((sum, s) => sum + s.followers, 0);
+    const totalReach = channelComparisonMetrics.reduce((sum, s) => sum + s.views, 0);
     const followersChange = dashboardSummary.kpiChanges.followers ?? 0;
     const reachChange    = dashboardSummary.kpiChanges.impressions ?? 0;
 
@@ -42,10 +67,11 @@ function DashboardWidgetContent({
             return (
                 <div className="p-4">
                     <div className="space-y-2.5">
-                        {channels.map(ch => {
+                        {HEALTH_WIDGET_CHANNELS.map(ch => {
                             const score = dashboardSummary.channelHealth[ch.slug] ?? 0;
+                            // Health score is based on normalized engagement rate
                             return (
-                                <Link key={ch.id} href={`/channels/${ch.slug}`} className="flex items-center gap-3 p-2 rounded-lg bg-stone-50 hover:bg-stone-100 transition-colors cursor-pointer group">
+                                <Link key={ch.id} href={ch.href} className="flex items-center gap-3 p-2 rounded-lg bg-stone-50 hover:bg-stone-100 transition-colors cursor-pointer group">
                                     <div className="flex items-center justify-center h-7 w-7 rounded-lg" style={{ backgroundColor: `${ch.color}15`, color: ch.color }}>
                                         {channelIcons[ch.slug]}
                                     </div>
@@ -53,12 +79,15 @@ function DashboardWidgetContent({
                                         <div className="flex items-center justify-between">
                                             <span className="text-xs font-medium text-stone-700">{ch.name}</span>
                                             <Badge variant="outline" className={`text-[9px] ${score >= 80 ? 'bg-emerald-50 text-emerald-600 border-emerald-200' : score >= 60 ? 'bg-amber-50 text-amber-600 border-amber-200' : 'bg-red-50 text-red-600 border-red-200'}`}>
-                                                {score}%
+                                                {score.toFixed(1)}%
                                             </Badge>
                                         </div>
                                         <div className="mt-1 h-1 rounded-full bg-stone-200 overflow-hidden">
                                             <div className="h-full rounded-full transition-all duration-700" style={{ width: `${score}%`, backgroundColor: score >= 80 ? '#10B981' : score >= 60 ? '#F59E0B' : '#EF4444' }} />
                                         </div>
+                                        <p className="mt-1 text-[9px] text-stone-500">
+                                            Engagement Rate: {score.toFixed(1)}%
+                                        </p>
                                     </div>
                                     <ArrowRight className="h-3 w-3 text-stone-300 opacity-0 group-hover:opacity-100 transition-opacity" />
                                 </Link>
@@ -81,9 +110,9 @@ function DashboardWidgetContent({
                 <div className="p-3 h-full">
                     <div className="h-[200px]">
                         <ResponsiveContainer width="100%" height="100%">
-                            <AreaChart data={dashboardSummary.engagementTrend.map(p => ({ date: p.date.slice(8), value: p.value }))}>
+                            <AreaChart data={engagementTrendData}>
                                 <CartesianGrid strokeDasharray="3 3" stroke="#E7E5E4" />
-                                <XAxis dataKey="date" tick={{ fontSize: 9, fill: '#78716C' }} />
+                                <XAxis dataKey="dateLabel" tick={{ fontSize: 9, fill: '#78716C' }} />
                                 <YAxis tick={{ fontSize: 9, fill: '#78716C' }} />
                                 <Tooltip contentStyle={{ borderRadius: 8, fontSize: 11 }} />
                                 <Area type="monotone" dataKey="value" stroke="#E5A100" fill="#E5A100" fillOpacity={0.15} strokeWidth={2} name="Engagement" />
@@ -123,13 +152,23 @@ function DashboardWidgetContent({
                 <div className="p-3 h-full">
                     <div className="h-[200px]">
                         <ResponsiveContainer width="100%" height="100%">
-                            <BarChart data={channelStats.map(s => ({ channel: s.channel.charAt(0).toUpperCase() + s.channel.slice(1), Followers: s.followers, Engagement: s.engagement }))}>
+                            <BarChart
+                                data={channelComparisonMetrics.map(metric => ({
+                                    channel: titleCaseChannel(metric.channel),
+                                    Followers: metric.followers,
+                                    Interactions: metric.interactions,
+                                    Views: metric.views,
+                                    'Link Clicks': metric.linkClicks,
+                                }))}
+                            >
                                 <CartesianGrid strokeDasharray="3 3" stroke="#E7E5E4" />
                                 <XAxis dataKey="channel" tick={{ fontSize: 10, fill: '#78716C' }} />
                                 <YAxis tick={{ fontSize: 9, fill: '#78716C' }} />
                                 <Tooltip contentStyle={{ borderRadius: 8, fontSize: 11 }} />
                                 <Bar dataKey="Followers" fill="#E5A100" radius={[4, 4, 0, 0]} />
-                                <Bar dataKey="Engagement" fill="#4A90D9" radius={[4, 4, 0, 0]} />
+                                <Bar dataKey="Interactions" fill="#4A90D9" radius={[4, 4, 0, 0]} />
+                                <Bar dataKey="Views" fill="#10B981" radius={[4, 4, 0, 0]} />
+                                <Bar dataKey="Link Clicks" fill="#8B5CF6" radius={[4, 4, 0, 0]} />
                                 <Legend wrapperStyle={{ fontSize: 10 }} />
                             </BarChart>
                         </ResponsiveContainer>
@@ -150,27 +189,85 @@ export default function DashboardPage() {
     const [sheetOpen, setSheetOpen] = useState(false);
 
     // Live data from backend, falls back to static stubs if unavailable
-    const { channelStats, followerGrowthTrend, dashboardSummary, loading } = useAllChannelsData();
+    const { followerGrowthTrend, channelComparisonMetrics, dashboardSummary, loading } = useAllChannelsData();
+
+    const comparisonMetrics = COMPARISON_CHANNEL_ORDER.map(channel =>
+        channelComparisonMetrics.find(metric => metric.channel === channel) ?? {
+            channel,
+            followers: 0,
+            interactions: 0,
+            views: 0,
+            linkClicks: 0,
+        },
+    );
 
     // ── Derived KPIs ─────────────────────────────────────────────────────────
-    const totalFollowers    = channelStats.reduce((sum, s) => sum + s.followers, 0);
-    const avgEngagement     = (channelStats.reduce((sum, s) => sum + s.engagementRate, 0) / channelStats.length).toFixed(1);
-    const totalImpressions  = channelStats.reduce((sum, s) => sum + s.impressions, 0);
-    const avgCTR            = (channelStats.reduce((sum, s) => sum + s.ctr, 0) / channelStats.length).toFixed(1);
+    const totalFollowers = comparisonMetrics.reduce((sum, metric) => sum + metric.followers, 0);
+    const totalViews = comparisonMetrics.reduce((sum, metric) => sum + metric.views, 0);
+    const avgEngagement = (
+        comparisonMetrics.reduce((sum, metric) => sum + safeRatio(metric.interactions, metric.views) * 100, 0) /
+        Math.max(comparisonMetrics.length, 1)
+    ).toFixed(1);
+    const avgCTR = (
+        comparisonMetrics.reduce((sum, metric) => sum + safeRatio(metric.linkClicks, metric.views) * 100, 0) /
+        Math.max(comparisonMetrics.length, 1)
+    ).toFixed(1);
 
     // KPI change %s from backend (or stubs)
     const kpi = dashboardSummary.kpiChanges;
     const activeAlerts = dashboardSummary.alerts.filter(a => a.status === 'active').length;
 
-    // Combined follower growth chart data
-    const baseGrowthData = followerGrowthTrend[0]?.data ?? [];
-    const growthChartData = baseGrowthData.map((point, i) => ({
-        date: point.date.slice(5),
-        Instagram: followerGrowthTrend[0]?.data[i]?.value ?? 0,
-        LinkedIn:  followerGrowthTrend[1]?.data[i]?.value ?? 0,
-        WhatsApp:  followerGrowthTrend[2]?.data[i]?.value ?? 0,
-        YouTube:   followerGrowthTrend[3]?.data[i]?.value ?? 0,
-        Facebook:  followerGrowthTrend[4]?.data[i]?.value ?? 0,
+    const growthByDate = new Map<string, {
+        date: string;
+        dateLabel: string;
+        Instagram: number;
+        LinkedIn: number;
+        Website: number;
+        Facebook: number;
+    }>();
+
+    const seriesToKey: Record<string, 'Instagram' | 'LinkedIn' | 'Website' | 'Facebook'> = {
+        Instagram: 'Instagram',
+        LinkedIn: 'LinkedIn',
+        Website: 'Website',
+        Facebook: 'Facebook',
+    };
+
+    for (const series of followerGrowthTrend) {
+        const key = seriesToKey[series.label];
+        if (!key) continue;
+        for (const point of series.data) {
+            if (!point.date) continue;
+            const existing = growthByDate.get(point.date) ?? {
+                date: point.date,
+                dateLabel: formatDateLabel(point.date),
+                Instagram: 0,
+                LinkedIn: 0,
+                Website: 0,
+                Facebook: 0,
+            };
+            existing[key] = point.value;
+            growthByDate.set(point.date, existing);
+        }
+    }
+
+    const growthChartData = Array.from(growthByDate.values()).sort((a, b) => a.date.localeCompare(b.date));
+
+    const engagementTrendData = dashboardSummary.engagementTrend
+        .filter(point => Boolean(point.date) && Number.isFinite(point.value))
+        .sort((a, b) => a.date.localeCompare(b.date))
+        .map(point => ({
+            date: point.date,
+            dateLabel: formatDateLabel(point.date),
+            value: point.value,
+        }));
+
+    const channelComparisonChartData = comparisonMetrics.map(metric => ({
+        channel: titleCaseChannel(metric.channel),
+        Followers: metric.followers,
+        Interactions: metric.interactions,
+        Views: metric.views,
+        'Link Clicks': metric.linkClicks,
     }));
 
     const addWidget = (w: WidgetDefinition) => {
@@ -191,6 +288,7 @@ export default function DashboardPage() {
                 <div>
                     <h1 className="text-2xl font-heading font-bold text-stone-900">Dashboard</h1>
                     <p className="text-sm text-stone-500 mt-1">Welcome back! Here&apos;s your social media overview.</p>
+                    <p className="text-xs text-amber-600 mt-1">All dashboard metrics are aggregated for the last 1 month.</p>
                 </div>
                 <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
                     <SheetTrigger asChild>
@@ -235,7 +333,7 @@ export default function DashboardPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                 <MetricKPI label="Total Followers"    value={loading ? '…' : totalFollowers}          change={kpi.followers   ?? 0} changeLabel="vs last month" icon={<Users className="h-5 w-5" />} />
                 <MetricKPI label="Avg Engagement Rate" value={loading ? '…' : `${avgEngagement}%`}   change={kpi.engagement  ?? 0} changeLabel="vs last month" icon={<TrendingUp className="h-5 w-5" />} />
-                <MetricKPI label="Total Impressions"   value={loading ? '…' : totalImpressions}       change={kpi.impressions ?? 0} changeLabel="vs last month" icon={<Eye className="h-5 w-5" />} />
+                <MetricKPI label="Total Views"         value={loading ? '…' : totalViews}             change={kpi.impressions ?? 0} changeLabel="vs last month" icon={<Eye className="h-5 w-5" />} />
                 <MetricKPI label="Avg CTR"             value={loading ? '…' : `${avgCTR}%`}           change={kpi.ctr        ?? 0} changeLabel="vs last month" icon={<MousePointerClick className="h-5 w-5" />} />
             </div>
 
@@ -261,7 +359,12 @@ export default function DashboardPage() {
                                     </div>
                                 </CardHeader>
                                 <CardContent className="p-0">
-                                    <DashboardWidgetContent widget={w} channelStats={channelStats} dashboardSummary={dashboardSummary} />
+                                    <DashboardWidgetContent
+                                        widget={w}
+                                        channelComparisonMetrics={comparisonMetrics}
+                                        dashboardSummary={dashboardSummary}
+                                        engagementTrendData={engagementTrendData}
+                                    />
                                 </CardContent>
                             </Card>
                         ))}
@@ -277,13 +380,12 @@ export default function DashboardPage() {
                         <ResponsiveContainer width="100%" height="100%">
                             <AreaChart data={growthChartData}>
                                 <CartesianGrid strokeDasharray="3 3" stroke="#E7E5E4" />
-                                <XAxis dataKey="date" tick={{ fontSize: 11, fill: '#78716C' }} />
+                                <XAxis dataKey="dateLabel" tick={{ fontSize: 11, fill: '#78716C' }} />
                                 <YAxis tick={{ fontSize: 11, fill: '#78716C' }} />
                                 <Tooltip contentStyle={{ borderRadius: 8, border: '1px solid #E7E5E4', fontSize: 12 }} />
                                 <Area type="monotone" dataKey="Instagram" stroke="#E4405F" fill="#E4405F" fillOpacity={0.1} strokeWidth={2} />
                                 <Area type="monotone" dataKey="LinkedIn"  stroke="#0A66C2" fill="#0A66C2" fillOpacity={0.1} strokeWidth={2} />
-                                <Area type="monotone" dataKey="WhatsApp"  stroke="#25D366" fill="#25D366" fillOpacity={0.1} strokeWidth={2} />
-                                <Area type="monotone" dataKey="YouTube"   stroke="#FF0000" fill="#FF0000" fillOpacity={0.1} strokeWidth={2} />
+                                <Area type="monotone" dataKey="Website"   stroke="#4A90D9" fill="#4A90D9" fillOpacity={0.1} strokeWidth={2} />
                                 <Area type="monotone" dataKey="Facebook"  stroke="#1877F2" fill="#1877F2" fillOpacity={0.1} strokeWidth={2} />
                                 <Legend />
                             </AreaChart>
@@ -295,9 +397,9 @@ export default function DashboardPage() {
                 <ChartCard title="Engagement Trend" description="Last 30 days combined engagement">
                     <div className="h-64">
                         <ResponsiveContainer width="100%" height="100%">
-                            <AreaChart data={dashboardSummary.engagementTrend.map(p => ({ date: p.date.slice(8), value: p.value }))}>
+                            <AreaChart data={engagementTrendData}>
                                 <CartesianGrid strokeDasharray="3 3" stroke="#E7E5E4" />
-                                <XAxis dataKey="date" tick={{ fontSize: 11, fill: '#78716C' }} />
+                                <XAxis dataKey="dateLabel" tick={{ fontSize: 11, fill: '#78716C' }} />
                                 <YAxis tick={{ fontSize: 11, fill: '#78716C' }} />
                                 <Tooltip contentStyle={{ borderRadius: 8, border: '1px solid #E7E5E4', fontSize: 12 }} />
                                 <Area type="monotone" dataKey="value" stroke="#E5A100" fill="#E5A100" fillOpacity={0.15} strokeWidth={2} name="Engagement" />
@@ -316,13 +418,10 @@ export default function DashboardPage() {
                     </CardHeader>
                     <CardContent>
                         <div className="space-y-3">
-                            {channels.map(ch => {
-                                const liveStats = channelStats.find(s => s.channel === ch.slug);
-                                const displayFollowers = liveStats ? liveStats.followers : ch.followers;
+                            {HEALTH_WIDGET_CHANNELS.map(ch => {
                                 const score = dashboardSummary.channelHealth[ch.slug] ?? 0;
-
                                 return (
-                                    <Link key={ch.id} href={`/channels/${ch.slug}`} className="flex items-center gap-4 p-3 rounded-lg bg-stone-50 hover:bg-stone-100 transition-colors cursor-pointer group">
+                                    <Link key={ch.id} href={ch.href} className="flex items-center gap-4 p-3 rounded-lg bg-stone-50 hover:bg-stone-100 transition-colors cursor-pointer group">
                                         <div className="flex items-center justify-center h-9 w-9 rounded-lg" style={{ backgroundColor: `${ch.color}15`, color: ch.color }}>
                                             {channelIcons[ch.slug]}
                                         </div>
@@ -330,17 +429,17 @@ export default function DashboardPage() {
                                             <div className="flex items-center justify-between">
                                                 <span className="text-sm font-medium text-stone-800">{ch.name}</span>
                                                 <Badge variant={score >= 80 ? 'default' : score >= 60 ? 'secondary' : 'destructive'} className={score >= 80 ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-100' : ''}>
-                                                    {score}%
+                                                    {score.toFixed(1)}%
                                                 </Badge>
                                             </div>
                                             <div className="mt-1.5 h-1.5 rounded-full bg-stone-200 overflow-hidden">
                                                 <div className="h-full rounded-full transition-all duration-700" style={{ width: `${score}%`, backgroundColor: score >= 80 ? '#10B981' : score >= 60 ? '#F59E0B' : '#EF4444' }} />
                                             </div>
+                                            <p className="mt-1 text-[11px] text-stone-500">
+                                                Engagement Rate: {score.toFixed(1)}%
+                                            </p>
                                         </div>
                                         <div className="flex items-center gap-2">
-                                            <span className="text-xs text-stone-400">
-                                                {loading ? '...' : displayFollowers.toLocaleString()} followers
-                                            </span>
                                             <ArrowRight className="h-3.5 w-3.5 text-stone-300 group-hover:text-amber-500 transition-colors" />
                                         </div>
                                     </Link>
@@ -379,13 +478,15 @@ export default function DashboardPage() {
                         <div className="h-full flex items-center justify-center text-stone-400 text-sm animate-pulse">Loading live data…</div>
                     ) : (
                         <ResponsiveContainer width="100%" height="100%">
-                            <BarChart data={channelStats.map(s => ({ channel: s.channel.charAt(0).toUpperCase() + s.channel.slice(1), Followers: s.followers, Engagement: s.engagement, 'Engagement Rate': s.engagementRate * 1000 }))}>
+                            <BarChart data={channelComparisonChartData}>
                                 <CartesianGrid strokeDasharray="3 3" stroke="#E7E5E4" />
                                 <XAxis dataKey="channel" tick={{ fontSize: 12, fill: '#78716C' }} />
                                 <YAxis tick={{ fontSize: 11, fill: '#78716C' }} />
                                 <Tooltip contentStyle={{ borderRadius: 8, border: '1px solid #E7E5E4', fontSize: 12 }} />
                                 <Bar dataKey="Followers" fill="#E5A100" radius={[4, 4, 0, 0]} />
-                                <Bar dataKey="Engagement" fill="#4A90D9" radius={[4, 4, 0, 0]} />
+                                <Bar dataKey="Interactions" fill="#4A90D9" radius={[4, 4, 0, 0]} />
+                                <Bar dataKey="Views" fill="#10B981" radius={[4, 4, 0, 0]} />
+                                <Bar dataKey="Link Clicks" fill="#8B5CF6" radius={[4, 4, 0, 0]} />
                                 <Legend />
                             </BarChart>
                         </ResponsiveContainer>

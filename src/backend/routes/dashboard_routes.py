@@ -10,7 +10,8 @@ router = APIRouter(prefix="/dashboard", tags=["Dashboard"])
 async def get_dashboard_summary():
     """
     Returns a unified snapshot for the main dashboard:
-    - channelHealth: computed health score (0-100) per channel
+    - channelHealth: computed health score (0-100) for instagram/facebook/linkedin/website
+    - channelHealthRates: ARR/ER/CTR (%) used to compute each channel health
     - kpiChanges: % change vs prior period for each top-level KPI
     - engagementTrend: 30-day daily combined engagement series
     - alerts: active and resolved alert list

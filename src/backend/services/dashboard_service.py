@@ -5,8 +5,8 @@ Computes channel health scores, KPI change deltas, engagement trend,
 alerts, and top posts by pulling from the same MongoDB collections
 used by the CSV-upload insights endpoints.
 
-Falls back to stub values for channels that have no CSV data yet
-(WhatsApp, YouTube) or when MongoDB is unavailable.
+Falls back to 0 health contribution when live inputs are unavailable
+for channel-health components.
 """
 
 from __future__ import annotations
@@ -17,15 +17,17 @@ from typing import Any
 
 from core.config import settings
 from core.database import db
+import services.ga_service as ga_service
 
 # ── Stub fallbacks (kept here, not in the frontend) ──────────────────────────
 
 STUB_CHANNEL_HEALTH: dict[str, int] = {
-    "instagram": 82,
-    "facebook":  76,
-    "linkedin":  68,
-    "whatsapp":  90,
-    "youtube":   79,
+    "instagram": 0,
+    "facebook":  0,
+    "linkedin":  0,
+    "website":   0,
+    "whatsapp":  0,
+    "youtube":   0,
 }
 
 STUB_KPI_CHANGES: dict[str, float] = {
@@ -170,53 +172,23 @@ STUB_TOP_POSTS = [
 
 # ── Health score computation ──────────────────────────────────────────────────
 
-# Baseline reference values per platform for normalisation
-_PLATFORM_BASELINES: dict[str, dict[str, float]] = {
-    "instagram": {"engagementRate": 4.5, "ctr": 2.0, "reachPerFollower": 3.0},
-    "facebook":  {"engagementRate": 3.5, "ctr": 1.8, "reachPerFollower": 2.5},
-    "linkedin":  {"engagementRate": 3.0, "ctr": 1.5, "reachPerFollower": 3.5},
-    "whatsapp":  {"engagementRate": 75.0, "ctr": 12.0, "reachPerFollower": 1.0},
-    "youtube":   {"engagementRate": 5.0, "ctr": 4.0, "reachPerFollower": 20.0},
-}
 
-def compute_channel_health(
-    *,
-    platform: str,
-    engagement_rate: float,
-    ctr: float,
-    followers: int,
-    reach: int,
-    has_live_data: bool,
-) -> int:
-    """
-    Compute a 0-100 health score for a channel using a weighted formula.
+def _safe_ratio(numerator: float, denominator: float) -> float:
+    """Return numerator/denominator, or 0.0 when the value is not computable."""
+    if denominator <= 0:
+        return 0.0
+    ratio = numerator / denominator
+    if not math.isfinite(ratio) or ratio < 0:
+        return 0.0
+    return ratio
 
-    Weights:
-      - Engagement rate vs platform baseline: 40 pts
-      - CTR vs platform baseline:             25 pts
-      - Reach-per-follower vs baseline:       25 pts
-      - Penalty if no live CSV data present:  -10 pts
-    """
-    baseline = _PLATFORM_BASELINES.get(platform, _PLATFORM_BASELINES["instagram"])
 
-    def _score(actual: float, reference: float, weight: float) -> float:
-        if reference <= 0:
-            return weight * 0.5
-        ratio = actual / reference
-        # sigmoid-like cap: score rises steeply up to 2× baseline, plateaus after
-        normalised = min(ratio, 2.0) / 2.0
-        return weight * normalised
-
-    engagement_score = _score(engagement_rate, baseline["engagementRate"], 40)
-    ctr_score        = _score(ctr, baseline["ctr"], 25)
-    reach_per_follower = (reach / max(followers, 1))
-    reach_score      = _score(reach_per_follower, baseline["reachPerFollower"], 25)
-
-    raw = engagement_score + ctr_score + reach_score
-    if not has_live_data:
-        raw = max(raw - 10, 0)
-
-    return max(0, min(100, round(raw)))
+def _normalize_engagement_rates(ers: dict[str, float]) -> dict[str, float]:
+    """Normalize engagement rates: (ER_channel / sum(ER_all)) * 100"""
+    total_er = sum(ers.values())
+    if total_er <= 0:
+        return {channel: 0.0 for channel in ers}
+    return {channel: (er / total_er) * 100 for channel, er in ers.items()}
 
 
 # ── MongoDB helpers ───────────────────────────────────────────────────────────
@@ -234,19 +206,17 @@ async def _aggregate_channel_metrics(
     metric_keys: list[str],
     days: int = 30,
 ) -> dict[str, float]:
-    """
-    Sum the given metric_keys over the last `days` days for `user_id`.
-    Returns a dict of {metric_key: total}.
-    """
+    """Aggregate metric sums over the last `days` window from now (UTC)."""
     coll = _collection(collection_name)
     if coll is None:
         return {}
 
-    since = datetime.now(tz=timezone.utc) - timedelta(days=days)
+    now = datetime.now(tz=timezone.utc)
+    since = now - timedelta(days=days)
     try:
         cursor = coll.find(
-            {"ig_user_id": user_id, "date": {"$gte": since}},
-            {"_id": 0, "metrics": 1, "date": 1},
+            {"ig_user_id": user_id, "date": {"$gte": since, "$lte": now}},
+            {"_id": 0, "metrics": 1},
         )
         totals: dict[str, float] = {k: 0.0 for k in metric_keys}
         count = 0
@@ -267,15 +237,16 @@ async def _aggregate_fb_metrics(
     metric_keys: list[str],
     days: int = 30,
 ) -> dict[str, float]:
-    """Same as above but for the Facebook collection."""
+    """Aggregate FB metric sums over the last `days` window from now (UTC)."""
     coll = _collection(settings.facebook_collection_name)
     if coll is None:
         return {}
 
-    since = datetime.now(tz=timezone.utc) - timedelta(days=days)
+    now = datetime.now(tz=timezone.utc)
+    since = now - timedelta(days=days)
     try:
         cursor = coll.find(
-            {"fb_user_id": user_id, "date": {"$gte": since}},
+            {"fb_user_id": user_id, "date": {"$gte": since, "$lte": now}},
             {"_id": 0, "metrics": 1},
         )
         totals: dict[str, float] = {k: 0.0 for k in metric_keys}
@@ -297,15 +268,16 @@ async def _aggregate_li_metrics(
     metric_keys: list[str],
     days: int = 30,
 ) -> dict[str, float]:
-    """Same but for the LinkedIn collection (keyed by li_org_id)."""
+    """Aggregate LI metric sums over the last `days` window from now (UTC)."""
     coll = _collection(settings.linkedin_collection_name)
     if coll is None:
         return {}
 
-    since = datetime.now(tz=timezone.utc) - timedelta(days=days)
+    now = datetime.now(tz=timezone.utc)
+    since = now - timedelta(days=days)
     try:
         cursor = coll.find(
-            {"li_org_id": org_id, "date": {"$gte": since}},
+            {"li_org_id": org_id, "date": {"$gte": since, "$lte": now}},
             {"_id": 0, "metrics": 1},
         )
         totals: dict[str, float] = {k: 0.0 for k in metric_keys}
@@ -510,66 +482,99 @@ async def get_dashboard_summary() -> dict[str, Any]:
     )
     li_metrics = await _aggregate_li_metrics(
         _LI_ORG_ID,
-        ["impressions_total", "clicks_total", "reactions_total", "unique_impressions_organic"],
+        [
+            "impressions_total",
+            "clicks_total",
+            "reactions_total",
+            "comments_total",
+            "reposts_total",
+            "follows_total",
+            "follows",
+        ],
+    )
+    # Annual audience-size baseline for ARR denominator calculations.
+    ig_audience_year = await _aggregate_channel_metrics(
+        settings.instagram_collection_name,
+        _IG_USER_ID,
+        ["instagram_follows", "reach"],
+        days=365,
+    )
+    fb_audience_year = await _aggregate_fb_metrics(
+        _FB_USER_ID,
+        ["facebook_follows"],
+        days=365,
+    )
+    li_audience_year = await _aggregate_li_metrics(
+        _LI_ORG_ID,
+        ["follows_total", "follows"],
+        days=365,
     )
 
-    # ── 2. Compute health scores ──────────────────────────────────────────
+    # ── 2. Compute ARR / ER / CTR and channel health ──────────────────────
     has_ig = bool(ig_metrics)
     has_fb = bool(fb_metrics)
     has_li = bool(li_metrics)
 
-    ig_views       = ig_metrics.get("views", 0) or 1
-    ig_eng_rate    = (ig_metrics.get("content_interactions", 0) / ig_views * 100) if has_ig else 0
-    ig_ctr         = (ig_metrics.get("instagram_link_clicks", 0) / ig_views * 100) if has_ig else 0
-    ig_followers   = int(ig_metrics.get("instagram_follows", 0)) if has_ig else 28400
-    ig_reach       = int(ig_metrics.get("reach", 0)) if has_ig else 89000
+    ig_followers_year = ig_audience_year.get("instagram_follows", 0)
+    # Fallback to annual reach when follower metric is absent for Instagram.
+    ig_audience_base_year = ig_followers_year if ig_followers_year > 0 else ig_audience_year.get("reach", 0)
+    ig_arr = _safe_ratio(ig_metrics.get("reach", 0), ig_audience_base_year) if has_ig else 0.0
+    ig_er = _safe_ratio(ig_metrics.get("content_interactions", 0), ig_metrics.get("reach", 0)) if has_ig else 0.0
+    ig_ctr = _safe_ratio(ig_metrics.get("instagram_link_clicks", 0), ig_metrics.get("reach", 0)) if has_ig else 0.0
 
-    fb_views       = fb_metrics.get("views", 0) or 1
-    fb_eng_rate    = (fb_metrics.get("content_interactions", 0) / fb_views * 100) if has_fb else 0
-    fb_ctr         = (fb_metrics.get("facebook_link_clicks", 0) / fb_views * 100) if has_fb else 0
-    fb_followers   = int(fb_metrics.get("facebook_follows", 0)) if has_fb else 22800
-    fb_reach       = int(fb_metrics.get("viewers", 0)) if has_fb else 71000
+    fb_arr = _safe_ratio(fb_metrics.get("views", 0), fb_audience_year.get("facebook_follows", 0)) if has_fb else 0.0
+    fb_er = _safe_ratio(fb_metrics.get("content_interactions", 0), fb_metrics.get("views", 0)) if has_fb else 0.0
+    fb_ctr = _safe_ratio(fb_metrics.get("facebook_link_clicks", 0), fb_metrics.get("views", 0)) if has_fb else 0.0
 
-    li_impressions = li_metrics.get("impressions_total", 0) or 1
-    li_clicks      = li_metrics.get("clicks_total", 0)
-    li_reactions   = li_metrics.get("reactions_total", 0)
-    li_eng_rate    = ((li_clicks + li_reactions) / li_impressions * 100) if has_li else 0
-    li_ctr         = (li_clicks / li_impressions * 100) if has_li else 0
-    li_followers   = int(li_metrics.get("unique_impressions_organic", 0)) if has_li else 12300
-    li_reach       = int(li_impressions) if has_li else 45000
+    li_views = li_metrics.get("impressions_total", 0) if has_li else 0.0
+    li_followers = (
+        (li_audience_year.get("follows_total", 0) or li_audience_year.get("follows", 0))
+        if has_li
+        else 0.0
+    )
+    li_interactions = (
+        li_metrics.get("reactions_total", 0)
+        + li_metrics.get("comments_total", 0)
+        + li_metrics.get("reposts_total", 0)
+    ) if has_li else 0.0
+    li_clicks = li_metrics.get("clicks_total", 0) if has_li else 0.0
+    li_arr = _safe_ratio(li_followers, li_views) if has_li else 0.0
+    li_er = _safe_ratio(li_interactions, li_views) if has_li else 0.0
+    li_ctr = _safe_ratio(li_clicks, li_views) if has_li else 0.0
 
-    channel_health = {
-        "instagram": compute_channel_health(
-            platform="instagram",
-            engagement_rate=ig_eng_rate if has_ig else STUB_CHANNEL_HEALTH["instagram"] / 15,
-            ctr=ig_ctr if has_ig else STUB_CHANNEL_HEALTH["instagram"] / 25,
-            followers=ig_followers,
-            reach=ig_reach,
-            has_live_data=has_ig,
-        ) if has_ig else STUB_CHANNEL_HEALTH["instagram"],
+    ga_arr = ga_er = ga_ctr = 0.0
+    if settings.ga_credentials_available:
+        try:
+            ga_overview = ga_service.get_overview("30daysAgo", "today")
+            ga_engagement = ga_service.get_engagement("30daysAgo", "today")
+            ga_conversions = ga_service.get_conversions("30daysAgo", "today")
+            ga_pageviews = float(ga_overview.get("pageviews", 0))
+            ga_users = float(ga_overview.get("users", 0))
+            ga_engaged_sessions = float(ga_engagement.get("engaged_sessions", 0))
+            ga_conversion_total = float(ga_conversions.get("total", 0))
+            ga_arr = _safe_ratio(ga_users, ga_pageviews)
+            ga_er = _safe_ratio(ga_engaged_sessions, ga_pageviews)
+            ga_ctr = _safe_ratio(ga_conversion_total, ga_pageviews)
+        except Exception:  # noqa: BLE001
+            ga_arr = ga_er = ga_ctr = 0.0
 
-        "facebook": compute_channel_health(
-            platform="facebook",
-            engagement_rate=fb_eng_rate if has_fb else STUB_CHANNEL_HEALTH["facebook"] / 15,
-            ctr=fb_ctr if has_fb else STUB_CHANNEL_HEALTH["facebook"] / 25,
-            followers=fb_followers,
-            reach=fb_reach,
-            has_live_data=has_fb,
-        ) if has_fb else STUB_CHANNEL_HEALTH["facebook"],
-
-        "linkedin": compute_channel_health(
-            platform="linkedin",
-            engagement_rate=li_eng_rate if has_li else STUB_CHANNEL_HEALTH["linkedin"] / 15,
-            ctr=li_ctr if has_li else STUB_CHANNEL_HEALTH["linkedin"] / 25,
-            followers=li_followers,
-            reach=li_reach,
-            has_live_data=has_li,
-        ) if has_li else STUB_CHANNEL_HEALTH["linkedin"],
-
-        # WhatsApp and YouTube: no CSV pipeline yet, use named stubs
-        "whatsapp": STUB_CHANNEL_HEALTH["whatsapp"],
-        "youtube":  STUB_CHANNEL_HEALTH["youtube"],
+    # Extract engagement rates only for health calculation
+    channel_ers = {
+        "instagram": ig_er,
+        "facebook": fb_er,
+        "linkedin": li_er,
+        "website": ga_er,
     }
+
+    # Normalize engagement rates: (ER_channel / sum(ER_all_channels)) * 100
+    normalized_health = _normalize_engagement_rates(channel_ers)
+    channel_health = {
+        **normalized_health,
+        "whatsapp": 0.0,
+        "youtube": 0.0,
+    }
+    # Round to 2 decimal places
+    channel_health = {channel: round(health, 2) for channel, health in channel_health.items()}
 
     # ── 3. KPI change percentages ──────────────────────────────────────────
     kpi_changes = await _compute_kpi_changes(_IG_USER_ID, _FB_USER_ID)
