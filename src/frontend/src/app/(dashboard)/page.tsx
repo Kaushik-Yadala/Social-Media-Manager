@@ -34,10 +34,55 @@ function safeRatio(numerator: number, denominator: number): number {
     return numerator / denominator;
 }
 
+function parseDashboardDate(dateStr: string): Date | null {
+    const trimmed = dateStr.trim();
+    if (!trimmed) return null;
+
+    const dashed = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (dashed) {
+        const parsed = new Date(Date.UTC(Number(dashed[1]), Number(dashed[2]) - 1, Number(dashed[3])));
+        if (!Number.isNaN(parsed.getTime())) return parsed;
+    }
+
+    const compact = trimmed.match(/^(\d{4})(\d{2})(\d{2})$/);
+    if (compact) {
+        const parsed = new Date(Date.UTC(Number(compact[1]), Number(compact[2]) - 1, Number(compact[3])));
+        if (!Number.isNaN(parsed.getTime())) return parsed;
+    }
+
+    const compactSingleDigitDay = trimmed.match(/^(\d{4})(\d{2})(\d)$/);
+    if (compactSingleDigitDay) {
+        const parsed = new Date(
+            Date.UTC(
+                Number(compactSingleDigitDay[1]),
+                Number(compactSingleDigitDay[2]) - 1,
+                Number(compactSingleDigitDay[3]),
+            ),
+        );
+        if (!Number.isNaN(parsed.getTime())) return parsed;
+    }
+
+    const normalized = trimmed.replace(/([+-]\d{2})(\d{2})$/, '$1:$2');
+    const parsed = new Date(normalized);
+    if (Number.isNaN(parsed.getTime())) return null;
+    return parsed;
+}
+
+function normalizeDashboardDateKey(dateStr: string): string | null {
+    const parsed = parseDashboardDate(dateStr);
+    if (!parsed) return null;
+    return parsed.toISOString().slice(0, 10);
+}
+
 function formatDateLabel(dateStr: string): string {
-    const parsed = new Date(`${dateStr}T00:00:00Z`);
-    if (Number.isNaN(parsed.getTime())) return dateStr;
-    return parsed.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: '2-digit' });
+    const parsed = parseDashboardDate(dateStr);
+    if (!parsed) return dateStr;
+    return new Intl.DateTimeFormat('en-GB', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+        timeZone: 'UTC',
+    }).format(parsed);
 }
 
 function titleCaseChannel(channel: string): string {
@@ -228,27 +273,32 @@ export default function DashboardPage() {
 
     const seriesToKey: Record<string, 'Instagram' | 'LinkedIn' | 'Website' | 'Facebook'> = {
         Instagram: 'Instagram',
+        'Instagram (data not given)': 'Instagram',
         LinkedIn: 'LinkedIn',
         'LinkedIn (data not given)': 'LinkedIn',  // mapped from hook when data unavailable
         Website: 'Website',
         Facebook: 'Facebook',
+        'Facebook (data not given)': 'Facebook',
     };
+    const seriesDisplayNameByKey: Partial<Record<'Instagram' | 'LinkedIn' | 'Website' | 'Facebook', string>> = {};
 
     for (const series of followerGrowthTrend) {
         const key = seriesToKey[series.label];
         if (!key) continue;
+        seriesDisplayNameByKey[key] = series.label;
         for (const point of series.data) {
-            if (!point.date) continue;
-            const existing = growthByDate.get(point.date) ?? {
-                date: point.date,
-                dateLabel: formatDateLabel(point.date),
+            const normalizedDate = typeof point.date === 'string' ? normalizeDashboardDateKey(point.date) : null;
+            if (!normalizedDate) continue;
+            const existing = growthByDate.get(normalizedDate) ?? {
+                date: normalizedDate,
+                dateLabel: formatDateLabel(normalizedDate),
                 Instagram: 0,
                 LinkedIn: 0,
                 Website: 0,
                 Facebook: 0,
             };
             existing[key] = point.value;
-            growthByDate.set(point.date, existing);
+            growthByDate.set(normalizedDate, existing);
         }
     }
 
@@ -384,10 +434,43 @@ export default function DashboardPage() {
                                 <XAxis dataKey="dateLabel" tick={{ fontSize: 11, fill: '#78716C' }} />
                                 <YAxis tick={{ fontSize: 11, fill: '#78716C' }} />
                                 <Tooltip contentStyle={{ borderRadius: 8, border: '1px solid #E7E5E4', fontSize: 12 }} />
-                                <Area type="monotone" dataKey="Instagram" stroke="#E4405F" fill="#E4405F" fillOpacity={0.1} strokeWidth={2} />
-                                <Area type="monotone" dataKey="LinkedIn" name="LinkedIn (data not given)" stroke="#0A66C2" fill="#0A66C2" fillOpacity={0.1} strokeWidth={2} strokeDasharray="4 4" />
-                                <Area type="monotone" dataKey="Website"   stroke="#4A90D9" fill="#4A90D9" fillOpacity={0.1} strokeWidth={2} />
-                                <Area type="monotone" dataKey="Facebook"  stroke="#1877F2" fill="#1877F2" fillOpacity={0.1} strokeWidth={2} />
+                                <Area
+                                    type="monotone"
+                                    dataKey="Instagram"
+                                    name={seriesDisplayNameByKey.Instagram ?? 'Instagram'}
+                                    stroke="#E4405F"
+                                    fill="#E4405F"
+                                    fillOpacity={0.1}
+                                    strokeWidth={2}
+                                />
+                                <Area
+                                    type="monotone"
+                                    dataKey="LinkedIn"
+                                    name={seriesDisplayNameByKey.LinkedIn ?? 'LinkedIn (data not given)'}
+                                    stroke="#0A66C2"
+                                    fill="#0A66C2"
+                                    fillOpacity={0.1}
+                                    strokeWidth={2}
+                                    strokeDasharray="4 4"
+                                />
+                                <Area
+                                    type="monotone"
+                                    dataKey="Website"
+                                    name={seriesDisplayNameByKey.Website ?? 'Website'}
+                                    stroke="#4A90D9"
+                                    fill="#4A90D9"
+                                    fillOpacity={0.1}
+                                    strokeWidth={2}
+                                />
+                                <Area
+                                    type="monotone"
+                                    dataKey="Facebook"
+                                    name={seriesDisplayNameByKey.Facebook ?? 'Facebook'}
+                                    stroke="#1877F2"
+                                    fill="#1877F2"
+                                    fillOpacity={0.1}
+                                    strokeWidth={2}
+                                />
                                 <Legend />
                             </AreaChart>
                         </ResponsiveContainer>

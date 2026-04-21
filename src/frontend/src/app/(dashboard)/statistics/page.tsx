@@ -19,6 +19,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 // LinkedIn data now comes entirely from /manual/linkedin/ endpoint
 import {
     getGAOverview,
@@ -129,6 +130,21 @@ interface DateRangeBounds {
     endDate: Date;
 }
 
+type DashboardTimeframePreset =
+    | 'last_7_days'
+    | 'last_30_days'
+    | 'last_90_days'
+    | 'all_time'
+    | 'custom';
+
+const DASHBOARD_TIMEFRAME_OPTIONS: Array<{ value: DashboardTimeframePreset; label: string }> = [
+    { value: 'last_7_days', label: 'Last 7 days' },
+    { value: 'last_30_days', label: 'Last 30 days' },
+    { value: 'last_90_days', label: 'Last 90 days' },
+    { value: 'all_time', label: 'All time' },
+    { value: 'custom', label: 'Custom range' },
+];
+
 interface ValuePoint {
     date: string;
     dateLabel: string;
@@ -199,6 +215,13 @@ function getLastThirtyDaysRange(): DateRange {
     const to = endOfDay(new Date());
     const from = startOfDay(new Date(to));
     from.setDate(from.getDate() - 29);
+    return { from, to };
+}
+
+function getRelativeDateRange(days: number): DateRange {
+    const to = endOfDay(new Date());
+    const from = startOfDay(new Date(to));
+    from.setDate(from.getDate() - (days - 1));
     return { from, to };
 }
 
@@ -393,6 +416,7 @@ function buildTrendData(
 
 export default function ComparativeStatisticsPage() {
     const [selectedCalendarRange, setSelectedCalendarRange] = useState<DateRange | undefined>(getLastThirtyDaysRange());
+    const [dashboardTimeframe, setDashboardTimeframe] = useState<DashboardTimeframePreset>('last_30_days');
     const [basisIndex, setBasisIndex] = useState(0);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
@@ -417,8 +441,32 @@ export default function ComparativeStatisticsPage() {
         };
     }, [selectedCalendarRange]);
 
-    const apiStartDate = selectedDateRange ? toIsoDate(selectedDateRange.startDate) : '30daysAgo';
+    const apiStartDate = selectedDateRange
+        ? toIsoDate(selectedDateRange.startDate)
+        : dashboardTimeframe === 'all_time'
+            ? '365daysAgo'
+            : '30daysAgo';
     const apiEndDate = selectedDateRange ? toIsoDate(selectedDateRange.endDate) : 'today';
+
+    const applyDashboardTimeframe = useCallback((preset: DashboardTimeframePreset) => {
+        setDashboardTimeframe(preset);
+        if (preset === 'all_time') {
+            setSelectedCalendarRange(undefined);
+            return;
+        }
+        if (preset === 'last_7_days') {
+            setSelectedCalendarRange(getRelativeDateRange(7));
+            return;
+        }
+        if (preset === 'last_30_days') {
+            setSelectedCalendarRange(getRelativeDateRange(30));
+            return;
+        }
+        if (preset === 'last_90_days') {
+            setSelectedCalendarRange(getRelativeDateRange(90));
+            return;
+        }
+    }, []);
 
     const fetchDashboardData = useCallback(
         async (showFullLoader: boolean) => {
@@ -616,6 +664,21 @@ export default function ComparativeStatisticsPage() {
                     </p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
+                    <Select
+                        value={dashboardTimeframe}
+                        onValueChange={(value) => applyDashboardTimeframe(value as DashboardTimeframePreset)}
+                    >
+                        <SelectTrigger className="h-8 w-[150px] text-xs">
+                            <SelectValue placeholder="Timeframe" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            {DASHBOARD_TIMEFRAME_OPTIONS.map((option) => (
+                                <SelectItem key={option.value} value={option.value}>
+                                    {option.label}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
                     <Popover>
                         <PopoverTrigger asChild>
                             <Button variant="outline" size="sm" className="h-8 text-xs text-stone-700">
@@ -627,7 +690,16 @@ export default function ComparativeStatisticsPage() {
                             <DayPicker
                                 mode="range"
                                 selected={selectedCalendarRange}
-                                onSelect={setSelectedCalendarRange}
+                                onSelect={(range) => {
+                                    setSelectedCalendarRange(range);
+                                    if (!range?.from && !range?.to) {
+                                        setDashboardTimeframe('all_time');
+                                        return;
+                                    }
+                                    if (range?.from && range.to) {
+                                        setDashboardTimeframe('custom');
+                                    }
+                                }}
                                 numberOfMonths={2}
                                 disabled={{ after: new Date() }}
                                 className="p-3"
@@ -668,7 +740,10 @@ export default function ComparativeStatisticsPage() {
                         variant="ghost"
                         size="sm"
                         className="h-8 text-xs"
-                        onClick={() => setSelectedCalendarRange(undefined)}
+                        onClick={() => {
+                            setSelectedCalendarRange(undefined);
+                            setDashboardTimeframe('all_time');
+                        }}
                         disabled={!selectedCalendarRange?.from && !selectedCalendarRange?.to}
                     >
                         Clear dates
@@ -689,7 +764,7 @@ export default function ComparativeStatisticsPage() {
             <div className="text-xs text-stone-500">
                 {selectedDateRange
                     ? `Selected range: ${formatDateWithYear(selectedDateRange.startDate)} - ${formatDateWithYear(selectedDateRange.endDate)}`
-                    : 'Selected range: Last 30 days'}
+                    : `Selected range: ${dashboardTimeframe === 'all_time' ? 'All time' : 'Last 30 days'}`}
                 {lastRefreshedAt ? ` · Last refreshed: ${formatDateWithYear(lastRefreshedAt)}` : ''}
             </div>
 

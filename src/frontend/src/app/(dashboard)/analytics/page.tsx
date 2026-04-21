@@ -3,14 +3,18 @@
 import { ChartCard, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from '@/components/charts/ChartComponents';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { heatmapData } from '@/lib/stub-data/analytics';
 import { getGAConversions, getGAEngagement, getGAOverview, getGAPageviews } from '@/lib/api/ga-api';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis } from 'recharts';
-import { Lightbulb, Clock, TrendingUp, Instagram, Linkedin, Wifi, WifiOff } from 'lucide-react';
+import { Lightbulb, Clock, TrendingUp, Instagram, Linkedin, Wifi, WifiOff, CalendarDays } from 'lucide-react';
 import { useAllChannelsData } from '@/lib/hooks/useAllChannelsData';
 import { useChannelAnalytics } from '@/lib/hooks/useChannelAnalytics';
+import { DayPicker, DateRange } from 'react-day-picker';
 
 const API_BASE =
     (typeof process !== 'undefined' && process.env.NEXT_PUBLIC_API_BASE_URL) ||
@@ -78,6 +82,28 @@ interface NormalizedSpiderRow {
     website: number;
     linkedinUnavailable?: boolean;
 }
+
+interface DateRangeBounds {
+    startMs: number;
+    endMs: number;
+    startDate: Date;
+    endDate: Date;
+}
+
+type DashboardTimeframePreset =
+    | 'last_7_days'
+    | 'last_30_days'
+    | 'last_90_days'
+    | 'all_time'
+    | 'custom';
+
+const DASHBOARD_TIMEFRAME_OPTIONS: Array<{ value: DashboardTimeframePreset; label: string }> = [
+    { value: 'last_7_days', label: 'Last 7 days' },
+    { value: 'last_30_days', label: 'Last 30 days' },
+    { value: 'last_90_days', label: 'Last 90 days' },
+    { value: 'all_time', label: 'All time' },
+    { value: 'custom', label: 'Custom range' },
+];
 
 const INSTAGRAM_METRIC_GOALS: MetricGoalConfig[] = [
     {
@@ -171,9 +197,83 @@ function normalizeOffsetDate(dateText: string): string {
 }
 
 function parseDate(dateText: string): Date | null {
-    const parsed = new Date(normalizeOffsetDate(dateText));
+    const trimmed = dateText.trim();
+    if (!trimmed) return null;
+
+    const dashed = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (dashed) {
+        const parsed = new Date(Date.UTC(Number(dashed[1]), Number(dashed[2]) - 1, Number(dashed[3])));
+        if (!Number.isNaN(parsed.getTime())) return parsed;
+    }
+
+    const compact = trimmed.match(/^(\d{4})(\d{2})(\d{2})$/);
+    if (compact) {
+        const parsed = new Date(Date.UTC(Number(compact[1]), Number(compact[2]) - 1, Number(compact[3])));
+        if (!Number.isNaN(parsed.getTime())) return parsed;
+    }
+
+    const compactSingleDigitDay = trimmed.match(/^(\d{4})(\d{2})(\d)$/);
+    if (compactSingleDigitDay) {
+        const parsed = new Date(
+            Date.UTC(
+                Number(compactSingleDigitDay[1]),
+                Number(compactSingleDigitDay[2]) - 1,
+                Number(compactSingleDigitDay[3]),
+            ),
+        );
+        if (!Number.isNaN(parsed.getTime())) return parsed;
+    }
+
+    const parsed = new Date(normalizeOffsetDate(trimmed));
     if (Number.isNaN(parsed.getTime())) return null;
     return parsed;
+}
+
+function formatDateWithYear(date: Date): string {
+    return date.toLocaleDateString(undefined, {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+    });
+}
+
+function formatDateRangeLabel(range: DateRange | undefined): string {
+    if (!range?.from) return 'Select date range';
+    if (!range.to) return `${formatDateWithYear(range.from)} - Select end date`;
+    return `${formatDateWithYear(range.from)} - ${formatDateWithYear(range.to)}`;
+}
+
+function startOfDay(date: Date): Date {
+    const copy = new Date(date);
+    copy.setHours(0, 0, 0, 0);
+    return copy;
+}
+
+function endOfDay(date: Date): Date {
+    const copy = new Date(date);
+    copy.setHours(23, 59, 59, 999);
+    return copy;
+}
+
+function getLastThirtyDaysRange(): DateRange {
+    const to = endOfDay(new Date());
+    const from = startOfDay(new Date(to));
+    from.setDate(from.getDate() - 29);
+    return { from, to };
+}
+
+function getRelativeDateRange(days: number): DateRange {
+    const to = endOfDay(new Date());
+    const from = startOfDay(new Date(to));
+    from.setDate(from.getDate() - (days - 1));
+    return { from, to };
+}
+
+function toIsoDate(date: Date): string {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
 }
 
 function normalizePostType(postType: string | undefined): string {
@@ -310,6 +410,31 @@ function pointsByDate(points: DailyMetricPoint[]): Map<string, DailyMetricPoint>
         }
     }
     return map;
+}
+
+function filterPointsByDateRange(
+    points: DailyMetricPoint[],
+    range: DateRangeBounds | null,
+): DailyMetricPoint[] {
+    if (!range) return points;
+    return points.filter((point) => {
+        const parsed = parseDate(point.date);
+        if (!parsed) return false;
+        const timestamp = parsed.getTime();
+        return timestamp >= range.startMs && timestamp <= range.endMs;
+    });
+}
+
+function filterMetricMapByDateRange(
+    metricMap: Map<string, DailyMetricPoint[]>,
+    range: DateRangeBounds | null,
+): Map<string, DailyMetricPoint[]> {
+    if (!range) return metricMap;
+    const filtered = new Map<string, DailyMetricPoint[]>();
+    for (const [metricKey, points] of metricMap.entries()) {
+        filtered.set(metricKey, filterPointsByDateRange(points, range));
+    }
+    return filtered;
 }
 
 function averagePointsByDay(points: DailyMetricPoint[]): Record<string, number> {
@@ -527,6 +652,47 @@ function SourceChip({
 
 export default function AnalyticsPage() {
     const [metric, setMetric] = useState<'reach' | 'comments' | 'shares' | 'engagement'>('reach');
+    const [selectedCalendarRange, setSelectedCalendarRange] = useState<DateRange | undefined>(getLastThirtyDaysRange());
+    const [dashboardTimeframe, setDashboardTimeframe] = useState<DashboardTimeframePreset>('last_30_days');
+
+    const selectedDateRange = useMemo<DateRangeBounds | null>(() => {
+        if (!selectedCalendarRange?.from || !selectedCalendarRange?.to) return null;
+        const startDate = startOfDay(selectedCalendarRange.from);
+        const endDate = endOfDay(selectedCalendarRange.to);
+        return {
+            startMs: startDate.getTime(),
+            endMs: endDate.getTime(),
+            startDate,
+            endDate,
+        };
+    }, [selectedCalendarRange]);
+
+    const apiStartDate = selectedDateRange
+        ? toIsoDate(selectedDateRange.startDate)
+        : dashboardTimeframe === 'all_time'
+            ? '365daysAgo'
+            : '30daysAgo';
+    const apiEndDate = selectedDateRange ? toIsoDate(selectedDateRange.endDate) : 'today';
+
+    const applyDashboardTimeframe = useCallback((preset: DashboardTimeframePreset) => {
+        setDashboardTimeframe(preset);
+        if (preset === 'all_time') {
+            setSelectedCalendarRange(undefined);
+            return;
+        }
+        if (preset === 'last_7_days') {
+            setSelectedCalendarRange(getRelativeDateRange(7));
+            return;
+        }
+        if (preset === 'last_30_days') {
+            setSelectedCalendarRange(getRelativeDateRange(30));
+            return;
+        }
+        if (preset === 'last_90_days') {
+            setSelectedCalendarRange(getRelativeDateRange(90));
+            return;
+        }
+    }, []);
 
     // ── Live channel-level data (CSV-backed for IG/FB/LI) ────────────────────
     const { channelStats, loading: channelLoading } = useAllChannelsData();
@@ -661,10 +827,10 @@ export default function AnalyticsPage() {
                 fetchJson<ManualInsightsResponse>(
                     `/manual/linkedin/insights/${encodeURIComponent(LINKEDIN_ORG_ID)}?${liParams.toString()}`,
                 ),
-                getGAEngagement('30daysAgo', 'today'),
-                getGAPageviews('day', '30daysAgo', 'today'),
-                getGAOverview('30daysAgo', 'today'),
-                getGAConversions('30daysAgo', 'today'),
+                getGAEngagement(apiStartDate, apiEndDate),
+                getGAPageviews('day', apiStartDate, apiEndDate),
+                getGAOverview(apiStartDate, apiEndDate),
+                getGAConversions(apiStartDate, apiEndDate),
             ]);
 
             if (cancelled) return;
@@ -679,7 +845,7 @@ export default function AnalyticsPage() {
             let liMetricMap: Map<string, DailyMetricPoint[]> | null = null;
 
             if (igResult.status === 'fulfilled') {
-                const metricMap = parseManualMetricMap(igResult.value);
+                const metricMap = filterMetricMapByDateRange(parseManualMetricMap(igResult.value), selectedDateRange);
                 igMetricMap = metricMap;
                 nextRates.instagram = buildEngagementRateByDay(
                     [metricMap.get('content_interactions') || []],
@@ -693,7 +859,7 @@ export default function AnalyticsPage() {
             }
 
             if (fbResult.status === 'fulfilled') {
-                const metricMap = parseManualMetricMap(fbResult.value);
+                const metricMap = filterMetricMapByDateRange(parseManualMetricMap(fbResult.value), selectedDateRange);
                 fbMetricMap = metricMap;
                 nextRates.facebook = buildEngagementRateByDay(
                     [metricMap.get('content_interactions') || []],
@@ -707,7 +873,7 @@ export default function AnalyticsPage() {
             }
 
             if (liResult.status === 'fulfilled') {
-                const metricMap = parseManualMetricMap(liResult.value);
+                const metricMap = filterMetricMapByDateRange(parseManualMetricMap(liResult.value), selectedDateRange);
                 liMetricMap = metricMap;
                 nextRates.linkedin = buildEngagementRateByDay(
                     [
@@ -786,7 +952,7 @@ export default function AnalyticsPage() {
         return () => {
             cancelled = true;
         };
-    }, []);
+    }, [apiEndDate, apiStartDate, selectedDateRange]);
 
     const heatmapMaxValue = useMemo(() => {
         let maxValue = 0;
@@ -817,14 +983,75 @@ export default function AnalyticsPage() {
 
     return (
         <div className="space-y-6">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-3">
                 <div>
                     <h1 className="text-2xl font-heading font-bold text-stone-900">Analytics</h1>
                     <p className="text-sm text-stone-500 mt-1">Deep-dive into your content performance and audience behaviour.</p>
                 </div>
-                {loading && (
-                    <span className="text-xs text-stone-400 animate-pulse">Loading live data…</span>
-                )}
+                <div className="flex flex-wrap items-center gap-2">
+                    <Select
+                        value={dashboardTimeframe}
+                        onValueChange={(value) => applyDashboardTimeframe(value as DashboardTimeframePreset)}
+                    >
+                        <SelectTrigger className="h-8 w-[150px] text-xs">
+                            <SelectValue placeholder="Timeframe" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            {DASHBOARD_TIMEFRAME_OPTIONS.map((option) => (
+                                <SelectItem key={option.value} value={option.value}>
+                                    {option.label}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                    <Popover>
+                        <PopoverTrigger asChild>
+                            <Button variant="outline" size="sm" className="h-8 text-xs text-stone-700">
+                                <CalendarDays className="mr-1.5 h-3.5 w-3.5" />
+                                {formatDateRangeLabel(selectedCalendarRange)}
+                            </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0" align="end">
+                            <DayPicker
+                                mode="range"
+                                selected={selectedCalendarRange}
+                                onSelect={(range) => {
+                                    setSelectedCalendarRange(range);
+                                    if (!range?.from && !range?.to) {
+                                        setDashboardTimeframe('all_time');
+                                        return;
+                                    }
+                                    if (range?.from && range.to) {
+                                        setDashboardTimeframe('custom');
+                                    }
+                                }}
+                                numberOfMonths={2}
+                                disabled={{ after: new Date() }}
+                                className="p-3"
+                            />
+                        </PopoverContent>
+                    </Popover>
+                    <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 text-xs"
+                        onClick={() => {
+                            setSelectedCalendarRange(undefined);
+                            setDashboardTimeframe('all_time');
+                        }}
+                        disabled={!selectedCalendarRange?.from && !selectedCalendarRange?.to}
+                    >
+                        Clear dates
+                    </Button>
+                    {loading && (
+                        <span className="text-xs text-stone-400 animate-pulse">Loading live data…</span>
+                    )}
+                </div>
+            </div>
+            <div className="text-xs text-stone-500">
+                {selectedDateRange
+                    ? `Selected range: ${formatDateWithYear(selectedDateRange.startDate)} - ${formatDateWithYear(selectedDateRange.endDate)}`
+                    : `Selected range: ${dashboardTimeframe === 'all_time' ? 'All time' : 'Last 30 days'}`}
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

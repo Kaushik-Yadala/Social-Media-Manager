@@ -57,19 +57,67 @@ function toNumber(value: unknown): number {
     return Number.isFinite(n) ? n : 0;
 }
 
-function extractDatePart(rawTime: string): string {
-    const ymd = rawTime.match(/^(\d{4}-\d{2}-\d{2})/)?.[1];
-    if (ymd) return ymd;
+function toIsoUtcDate(year: number, month: number, day: number): string {
+    if (!Number.isInteger(year) || !Number.isInteger(month) || !Number.isInteger(day)) return '';
+    const parsed = new Date(Date.UTC(year, month - 1, day));
+    if (
+        Number.isNaN(parsed.getTime()) ||
+        parsed.getUTCFullYear() !== year ||
+        parsed.getUTCMonth() !== month - 1 ||
+        parsed.getUTCDate() !== day
+    ) {
+        return '';
+    }
+    return parsed.toISOString().slice(0, 10);
+}
 
-    const normalised = rawTime.replace(/([+-]\d{2})(\d{2})$/, '$1:$2');
-    const d = normalised ? new Date(normalised) : null;
-    return d && !Number.isNaN(d.getTime()) ? d.toISOString().slice(0, 10) : '';
+function normalizeDateKey(rawTime: string): string {
+    const trimmed = rawTime.trim();
+    if (!trimmed) return '';
+
+    const dashed = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (dashed) {
+        return toIsoUtcDate(Number(dashed[1]), Number(dashed[2]), Number(dashed[3]));
+    }
+
+    const compact = trimmed.match(/^(\d{4})(\d{2})(\d{2})$/);
+    if (compact) {
+        return toIsoUtcDate(Number(compact[1]), Number(compact[2]), Number(compact[3]));
+    }
+
+    const compactSingleDigitDay = trimmed.match(/^(\d{4})(\d{2})(\d)$/);
+    if (compactSingleDigitDay) {
+        return toIsoUtcDate(
+            Number(compactSingleDigitDay[1]),
+            Number(compactSingleDigitDay[2]),
+            Number(compactSingleDigitDay[3]),
+        );
+    }
+
+    const normalised = trimmed.replace(/([+-]\d{2})(\d{2})$/, '$1:$2');
+    const parsed = normalised ? new Date(normalised) : null;
+    return parsed && !Number.isNaN(parsed.getTime()) ? parsed.toISOString().slice(0, 10) : '';
+}
+
+function extractDatePart(rawTime: string): string {
+    return normalizeDateKey(rawTime);
 }
 
 function windowStartDate(days: number): string {
     const d = new Date();
     d.setUTCDate(d.getUTCDate() - days);
     return d.toISOString().slice(0, 10);
+}
+
+function buildRecentZeroPoints(days: number): { date: string; value: number }[] {
+    const points: { date: string; value: number }[] = [];
+    const end = new Date();
+    for (let i = days - 1; i >= 0; i -= 1) {
+        const current = new Date(end);
+        current.setUTCDate(end.getUTCDate() - i);
+        points.push({ date: current.toISOString().slice(0, 10), value: 0 });
+    }
+    return points;
 }
 
 function parseManualSeries(payload: ManualInsightsResponse): Map<string, MetricSeries> {
@@ -412,7 +460,6 @@ export function useAllChannelsData(): AllChannelsData {
                         .filter(p => p.date)
                         .map(p => ({ date: p.date, value: p.value }))
                     : null;
-            const fallbackFbData = stubGrowth[0].data.map(p => ({ date: p.date, value: 0 }));
             const fbFollowsSeries = fbData?.get('facebook_follows');
             const fbGrowthPoints =
                 fbFollowsSeries && fbFollowsSeries.points.length > 0
@@ -420,34 +467,46 @@ export function useAllChannelsData(): AllChannelsData {
                         .filter(p => p.date)
                         .map(p => ({ date: p.date, value: p.value }))
                     : null;
-            // LinkedIn follower growth: not available from /manual/linkedin/ endpoint
-            // — show empty points so the chart renders without LinkedIn data,
-            //   which displays as "data not given" in practice.
-            const liGrowthPoints: { date: string; value: number }[] | null = null;
             const websiteGrowthPoints =
                 gaPageviewsData?.series?.length
                     ? gaPageviewsData.series
-                        .filter((point) => Boolean(point.date) && point.date >= windowStartDate(30))
-                        .map((point) => ({ date: point.date, value: point.value }))
+                        .reduce<{ date: string; value: number }[]>((acc, point) => {
+                            const normalizedDate = normalizeDateKey(point.date);
+                            if (!normalizedDate || normalizedDate < windowStartDate(30)) return acc;
+                            acc.push({ date: normalizedDate, value: point.value });
+                            return acc;
+                        }, [])
                     : null;
-            const fallbackWebsiteData =
-                stubGrowth[0]?.data?.map((p) => ({ date: p.date, value: 0 })) ?? [];
+            const baseGrowthPoints =
+                websiteGrowthPoints?.length
+                    ? websiteGrowthPoints
+                    : igGrowthPoints?.length
+                        ? igGrowthPoints
+                        : fbGrowthPoints?.length
+                            ? fbGrowthPoints
+                            : buildRecentZeroPoints(30);
+            const zeroGrowthPoints = baseGrowthPoints.map((point) => ({
+                date: point.date,
+                value: 0,
+            }));
 
             const mergedGrowth: TimeSeries[] = [
-                igGrowthPoints
-                    ? { label: 'Instagram', color: '#E4405F', data: igGrowthPoints }
-                    : stubGrowth[0],
+                {
+                    label: igGrowthPoints ? 'Instagram' : 'Instagram (data not given)',
+                    color: '#E4405F',
+                    data: igGrowthPoints ?? zeroGrowthPoints,
+                },
                 // LinkedIn: follower data not available from /manual/linkedin/ endpoint
                 { label: 'LinkedIn (data not given)', color: '#0A66C2', data: [] },
                 {
                     label: 'Website',
                     color: '#4A90D9',
-                    data: websiteGrowthPoints || fallbackWebsiteData,
+                    data: websiteGrowthPoints ?? zeroGrowthPoints,
                 },
                 {
-                    label: 'Facebook',
+                    label: fbGrowthPoints ? 'Facebook' : 'Facebook (data not given)',
                     color: '#1877F2',
-                    data: fbGrowthPoints || fallbackFbData
+                    data: fbGrowthPoints ?? zeroGrowthPoints,
                 }
             ];
 
