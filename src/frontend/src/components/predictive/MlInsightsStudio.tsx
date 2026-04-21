@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import ReactMarkdown from 'react-markdown';
 import {
   addTrackedTerm,
   generateIdeas,
@@ -198,6 +199,44 @@ export function MlInsightsStudio() {
     }
   };
 
+  const parsedInsight = useMemo(() => {
+    if (!insightResult?.strategy_and_caption) return null;
+
+    const text = insightResult.strategy_and_caption;
+
+    const strategyMatch = text.split(/1\.\s*Strategic Recommendation:/i)[1]?.split(/2\./)[0];
+    const captionMatch = text.split(/2\.\s*Ready-to-Post Caption.*?:/i)[1]?.split(/Rationale/i)[0];
+    const rationaleMatch = text.split(/Rationale.*?:/i)[1];
+
+    return {
+      strategy: strategyMatch?.trim(),
+      caption: captionMatch?.trim(),
+      rationale: rationaleMatch?.trim(),
+    };
+  }, [insightResult]);
+
+  const parsedIdeas = useMemo(() => {
+    if (!ideasResult?.ideas) return [];
+
+    const text = ideasResult.ideas;
+
+    // Split by "Idea X:"
+    const rawIdeas = text.split(/Idea \d+:/i).slice(1);
+
+    return rawIdeas.map((ideaBlock, index) => {
+      const titleMatch = ideaBlock.split("\n")[0];
+
+      const hookMatch = ideaBlock.split(/Visual Hook\/Concept:/i)[1]?.split(/Full Caption:/i)[0];
+      const captionMatch = ideaBlock.split(/Full Caption:/i)[1];
+
+      return {
+        title: `Idea ${index + 1}: ${titleMatch?.trim() || ""}`,
+        hook: hookMatch?.trim(),
+        caption: captionMatch?.trim(),
+      };
+    });
+  }, [ideasResult]);
+
   return (
     <section className="space-y-4">
       <div>
@@ -293,7 +332,13 @@ export function MlInsightsStudio() {
                     <div className="space-y-1.5">
                       {shapEntries.map(([feature, value]) => (
                         <div key={feature} className="flex items-center justify-between text-xs">
-                          <span className="text-stone-600">{feature}</span>
+                          <span className="text-stone-600">
+                            {feature
+                              .replace(/_/g, " ")
+                              .replace("Post type ", "")
+                              .replace(/\b\w/g, c => c.toUpperCase())
+                            }
+                          </span>
                           <Badge className={value >= 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}>
                             {value >= 0 ? '+' : ''}{value.toFixed(4)}
                           </Badge>
@@ -359,9 +404,57 @@ export function MlInsightsStudio() {
                     {ideasResult.topic && (
                       <Badge variant="outline" className="bg-white text-stone-600">Topic: {ideasResult.topic}</Badge>
                     )}
-                    <pre className="whitespace-pre-wrap text-xs text-stone-700 font-sans leading-relaxed">
-                      {ideasResult.ideas || 'No ideas returned.'}
-                    </pre>
+                    <div className="space-y-3">
+
+                      {parsedIdeas.map((idea, idx) => (
+                        <div key={idx} className="rounded-lg border bg-white p-3 space-y-2">
+
+                          {/* 💡 Title */}
+                          <p className="text-xs font-semibold text-stone-800">
+                            💡 {idea.title}
+                          </p>
+
+                          {/* 🎬 Hook */}
+                          {idea.hook && (
+                            <div className="p-2 rounded bg-blue-50 border border-blue-200">
+                              <p className="text-[11px] font-medium text-blue-800 mb-1">
+                                🎬 Visual Hook / Concept
+                              </p>
+                              <div className="prose prose-sm max-w-none text-blue-900">
+                                <ReactMarkdown>
+                                  {idea.hook}
+                                </ReactMarkdown>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* ✍️ Caption */}
+                          {idea.caption && (
+                            <div className="p-2 rounded bg-emerald-50 border border-emerald-200">
+                              <p className="text-[11px] font-medium text-emerald-800 mb-1">
+                                ✍️ Caption
+                              </p>
+                              <div className="prose prose-sm max-w-none text-emerald-900">
+                                <ReactMarkdown>
+                                  {idea.caption}
+                                </ReactMarkdown>
+                              </div>
+
+                              {/* Copy button */}
+                              <Button
+                                size="sm"
+                                className="mt-2 text-xs"
+                                onClick={() => navigator.clipboard.writeText(idea.caption || "")}
+                              >
+                                Copy Caption
+                              </Button>
+                            </div>
+                          )}
+
+                        </div>
+                      ))}
+
+                    </div>
                   </div>
                 )}
               </div>
@@ -405,9 +498,51 @@ export function MlInsightsStudio() {
                         </Badge>
                       )}
                     </div>
-                    <pre className="whitespace-pre-wrap text-xs text-stone-700 font-sans leading-relaxed">
-                      {insightResult.strategy_and_caption || 'No strategy/caption output returned.'}
-                    </pre>
+                    <div className="space-y-3">
+
+                      {/* 🧠 Strategy */}
+                      {parsedInsight?.strategy && (
+                        <div className="p-3 rounded-lg border bg-blue-50 border-blue-200">
+                          <p className="text-xs font-semibold text-blue-800 mb-1">
+                            🧠 Strategy
+                          </p>
+                          <div className="prose prose-sm max-w-none text-blue-900">
+                            <ReactMarkdown>
+                              {parsedInsight.strategy}
+                            </ReactMarkdown>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* ✍️ Caption */}
+                      {parsedInsight?.caption && (
+                        <div className="p-3 rounded-lg border bg-emerald-50 border-emerald-200">
+                          <p className="text-xs font-semibold text-emerald-800 mb-1">
+                            ✍️ Ready-to-Post Caption
+                          </p>
+                          <div className="prose prose-sm max-w-none text-emerald-900">
+                            <ReactMarkdown>
+                              {parsedInsight.caption}
+                            </ReactMarkdown>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* 📊 Rationale */}
+                      {parsedInsight?.rationale && (
+                        <div className="p-3 rounded-lg border bg-amber-50 border-amber-200">
+                          <p className="text-xs font-semibold text-amber-800 mb-1">
+                            📊 Why This Works
+                          </p>
+                          <div className="prose prose-sm max-w-none text-amber-900">
+                            <ReactMarkdown>
+                              {parsedInsight.rationale}
+                            </ReactMarkdown>
+                          </div>
+                        </div>
+                      )}
+
+                    </div>
                   </>
                 )}
               </div>
