@@ -229,6 +229,7 @@ export default function DashboardPage() {
     const seriesToKey: Record<string, 'Instagram' | 'LinkedIn' | 'Website' | 'Facebook'> = {
         Instagram: 'Instagram',
         LinkedIn: 'LinkedIn',
+        'LinkedIn (data not given)': 'LinkedIn',  // mapped from hook when data unavailable
         Website: 'Website',
         Facebook: 'Facebook',
     };
@@ -384,7 +385,7 @@ export default function DashboardPage() {
                                 <YAxis tick={{ fontSize: 11, fill: '#78716C' }} />
                                 <Tooltip contentStyle={{ borderRadius: 8, border: '1px solid #E7E5E4', fontSize: 12 }} />
                                 <Area type="monotone" dataKey="Instagram" stroke="#E4405F" fill="#E4405F" fillOpacity={0.1} strokeWidth={2} />
-                                <Area type="monotone" dataKey="LinkedIn"  stroke="#0A66C2" fill="#0A66C2" fillOpacity={0.1} strokeWidth={2} />
+                                <Area type="monotone" dataKey="LinkedIn" name="LinkedIn (data not given)" stroke="#0A66C2" fill="#0A66C2" fillOpacity={0.1} strokeWidth={2} strokeDasharray="4 4" />
                                 <Area type="monotone" dataKey="Website"   stroke="#4A90D9" fill="#4A90D9" fillOpacity={0.1} strokeWidth={2} />
                                 <Area type="monotone" dataKey="Facebook"  stroke="#1877F2" fill="#1877F2" fillOpacity={0.1} strokeWidth={2} />
                                 <Legend />

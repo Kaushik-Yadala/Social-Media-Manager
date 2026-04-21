@@ -19,14 +19,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import {
-    getLIOverview,
-    getLIPageTraffic,
-    getLIPostsPerformance,
-    type LIOverview,
-    type LIPageTrafficResponse,
-    type LIPostResponse,
-} from '@/lib/api/li-api';
+// LinkedIn data now comes entirely from /manual/linkedin/ endpoint
 import {
     getGAOverview,
     getGAPageviews,
@@ -52,6 +45,55 @@ const API_BASE =
     'http://localhost:8000';
 const INSTAGRAM_USER_ID = 'ClubArtizen';
 const FACEBOOK_USER_ID = 'ClubArtizen';
+const LINKEDIN_ORG_ID = 'ClubArtizen';
+
+// LinkedIn metrics available from /manual/linkedin/insights
+const LI_METRICS = [
+    'impressions',
+    'clicks',
+    'reactions',
+    'comments',
+    'reposts',
+] as const;
+
+type LinkedInMetricKey = (typeof LI_METRICS)[number];
+type LinkedInSeries = Record<LinkedInMetricKey, ValuePoint[]>;
+
+function isLinkedInMetricKey(key: string): key is LinkedInMetricKey {
+    return LI_METRICS.includes(key as LinkedInMetricKey);
+}
+
+function createEmptyLinkedInSeries(): LinkedInSeries {
+    return {
+        impressions: [],
+        clicks: [],
+        reactions: [],
+        comments: [],
+        reposts: [],
+    };
+}
+
+function parseLinkedInInsights(payload: ManualInsightsResponse): LinkedInSeries {
+    const parsed = createEmptyLinkedInSeries();
+    const entries = Array.isArray(payload.data) ? payload.data : [];
+    for (const entry of entries) {
+        if (!entry || typeof entry.name !== 'string') continue;
+        if (!isLinkedInMetricKey(entry.name)) continue;
+        parsed[entry.name] = parseManualPoints(entry.values);
+    }
+    return parsed;
+}
+
+async function fetchLinkedInInsights(): Promise<LinkedInSeries> {
+    const metricParams = new URLSearchParams({
+        metric: LI_METRICS.join(','),
+        period: 'day',
+    });
+    const payload = await fetchManualInsights([
+        `/manual/linkedin/insights/${encodeURIComponent(LINKEDIN_ORG_ID)}?${metricParams.toString()}`,
+    ]);
+    return parseLinkedInInsights(payload);
+}
 
 const IG_METRICS = [
     'reach',
@@ -359,9 +401,7 @@ export default function ComparativeStatisticsPage() {
 
     const [instagramSeries, setInstagramSeries] = useState<InstagramSeries>(createEmptyInstagramSeries());
     const [facebookSeries, setFacebookSeries] = useState<FacebookSeries>(createEmptyFacebookSeries());
-    const [liOverview, setLiOverview] = useState<LIOverview | null>(null);
-    const [liPageTraffic, setLiPageTraffic] = useState<LIPageTrafficResponse | null>(null);
-    const [liPosts, setLiPosts] = useState<LIPostResponse | null>(null);
+    const [linkedInSeries, setLinkedInSeries] = useState<LinkedInSeries>(createEmptyLinkedInSeries());
     const [gaOverview, setGaOverview] = useState<GAOverview | null>(null);
     const [gaPageviews, setGaPageviews] = useState<GAPageviews | null>(null);
     const [gaEngagement, setGaEngagement] = useState<GAEngagement | null>(null);
@@ -390,9 +430,7 @@ export default function ComparativeStatisticsPage() {
                 const [
                     igSeriesRes,
                     fbSeriesRes,
-                    liOverviewRes,
-                    liTrafficRes,
-                    liPostsRes,
+                    liSeriesRes,
                     gaOverviewRes,
                     gaPageviewsRes,
                     gaEngagementRes,
@@ -400,9 +438,7 @@ export default function ComparativeStatisticsPage() {
                 ] = await Promise.all([
                     fetchInstagramInsights(),
                     fetchFacebookInsights(),
-                    getLIOverview(apiStartDate, apiEndDate),
-                    getLIPageTraffic(apiStartDate, apiEndDate),
-                    getLIPostsPerformance(apiStartDate, apiEndDate),
+                    fetchLinkedInInsights(),
                     getGAOverview(apiStartDate, apiEndDate),
                     getGAPageviews('day', apiStartDate, apiEndDate),
                     getGAEngagement(apiStartDate, apiEndDate),
@@ -411,9 +447,7 @@ export default function ComparativeStatisticsPage() {
 
                 setInstagramSeries(igSeriesRes);
                 setFacebookSeries(fbSeriesRes);
-                setLiOverview(liOverviewRes);
-                setLiPageTraffic(liTrafficRes);
-                setLiPosts(liPostsRes);
+                setLinkedInSeries(liSeriesRes);
                 setGaOverview(gaOverviewRes);
                 setGaPageviews(gaPageviewsRes);
                 setGaEngagement(gaEngagementRes);
@@ -434,49 +468,44 @@ export default function ComparativeStatisticsPage() {
         void fetchDashboardData(true);
     }, [fetchDashboardData, selectedCalendarRange]);
 
-    const liPageViewsSeries = useMemo(
-        () => mapSeries((liPageTraffic?.traffic_data || []).map((item) => ({ date: item.date, value: item.page_views }))),
-        [liPageTraffic],
-    );
-    const liUniqueVisitorSeries = useMemo(
-        () => mapSeries((liPageTraffic?.traffic_data || []).map((item) => ({ date: item.date, value: item.unique_visitors }))),
-        [liPageTraffic],
-    );
     const gaPageviewsSeries = useMemo(() => mapSeries(gaPageviews?.series), [gaPageviews]);
 
+    // Instagram filtered series
     const filteredIgFollows = useMemo(() => filterPointsByRange(instagramSeries.instagram_follows, selectedDateRange), [instagramSeries.instagram_follows, selectedDateRange]);
     const filteredIgReach = useMemo(() => filterPointsByRange(instagramSeries.reach, selectedDateRange), [instagramSeries.reach, selectedDateRange]);
     const filteredIgViews = useMemo(() => filterPointsByRange(instagramSeries.views, selectedDateRange), [instagramSeries.views, selectedDateRange]);
     const filteredIgInteractions = useMemo(() => filterPointsByRange(instagramSeries.content_interactions, selectedDateRange), [instagramSeries.content_interactions, selectedDateRange]);
     const filteredIgClicks = useMemo(() => filterPointsByRange(instagramSeries.instagram_link_clicks, selectedDateRange), [instagramSeries.instagram_link_clicks, selectedDateRange]);
 
+    // Facebook filtered series
     const filteredFbFollows = useMemo(() => filterPointsByRange(facebookSeries.facebook_follows, selectedDateRange), [facebookSeries.facebook_follows, selectedDateRange]);
     const filteredFbViews = useMemo(() => filterPointsByRange(facebookSeries.views, selectedDateRange), [facebookSeries.views, selectedDateRange]);
     const filteredFbViewers = useMemo(() => filterPointsByRange(facebookSeries.viewers, selectedDateRange), [facebookSeries.viewers, selectedDateRange]);
     const filteredFbInteractions = useMemo(() => filterPointsByRange(facebookSeries.content_interactions, selectedDateRange), [facebookSeries.content_interactions, selectedDateRange]);
     const filteredFbClicks = useMemo(() => filterPointsByRange(facebookSeries.facebook_link_clicks, selectedDateRange), [facebookSeries.facebook_link_clicks, selectedDateRange]);
 
-    const filteredLiPageViews = useMemo(() => filterPointsByRange(liPageViewsSeries, selectedDateRange), [liPageViewsSeries, selectedDateRange]);
-    const filteredLiUniqueVisitors = useMemo(() => filterPointsByRange(liUniqueVisitorSeries, selectedDateRange), [liUniqueVisitorSeries, selectedDateRange]);
+    // LinkedIn filtered series — from /manual/linkedin/
+    const filteredLiImpressions = useMemo(() => filterPointsByRange(linkedInSeries.impressions, selectedDateRange), [linkedInSeries.impressions, selectedDateRange]);
+    const filteredLiClicks = useMemo(() => filterPointsByRange(linkedInSeries.clicks, selectedDateRange), [linkedInSeries.clicks, selectedDateRange]);
+    const filteredLiReactions = useMemo(() => filterPointsByRange(linkedInSeries.reactions, selectedDateRange), [linkedInSeries.reactions, selectedDateRange]);
+    const filteredLiComments = useMemo(() => filterPointsByRange(linkedInSeries.comments, selectedDateRange), [linkedInSeries.comments, selectedDateRange]);
+    const filteredLiReposts = useMemo(() => filterPointsByRange(linkedInSeries.reposts, selectedDateRange), [linkedInSeries.reposts, selectedDateRange]);
+
     const filteredGaPageviews = useMemo(() => filterPointsByRange(gaPageviewsSeries, selectedDateRange), [gaPageviewsSeries, selectedDateRange]);
 
-    const liPostsData = liPosts?.posts || [];
-    const liTotalClicks = useMemo(() => liPostsData.reduce((sum, post) => sum + (post.clicks || 0), 0), [liPostsData]);
-    const liTotalImpressions = useMemo(
-        () => {
-            const fromPosts = liPostsData.reduce((sum, post) => sum + (post.impressions || 0), 0);
-            return fromPosts > 0 ? fromPosts : (liOverview?.total_post_impressions ?? 0);
-        },
-        [liPostsData, liOverview?.total_post_impressions],
+    // LinkedIn aggregated metrics
+    const liTotalImpressions = useMemo(() => sumValues(filteredLiImpressions), [filteredLiImpressions]);
+    const liTotalClicks = useMemo(() => sumValues(filteredLiClicks), [filteredLiClicks]);
+    // Engagement = Reactions + Comments + Reposts
+    const liTotalEngagement = useMemo(
+        () => sumValues(filteredLiReactions) + sumValues(filteredLiComments) + sumValues(filteredLiReposts),
+        [filteredLiReactions, filteredLiComments, filteredLiReposts],
     );
-    const liTotalInteractions = useMemo(
-        () => liPostsData.reduce((sum, post) => sum + (post.likes || 0) + (post.comments || 0) + (post.shares || 0), 0),
-        [liPostsData],
-    );
-    const liAvgEngagementRate = useMemo(
-        () => (liPostsData.length > 0 ? average(liPostsData.map((post) => post.engagement_rate || 0)) : (liOverview?.avg_engagement_rate ?? 0)),
-        [liPostsData, liOverview?.avg_engagement_rate],
-    );
+    const liEngagementRate = useMemo(() => {
+        const impressions = Math.max(liTotalImpressions, 1);
+        return (liTotalEngagement / impressions) * 100;
+    }, [liTotalEngagement, liTotalImpressions]);
+    const liImpressionsSeries = useMemo(() => filteredLiImpressions, [filteredLiImpressions]);
 
     const igEngagementRate = useMemo(() => {
         const interactions = sumValues(filteredIgInteractions);
@@ -512,6 +541,9 @@ export default function ComparativeStatisticsPage() {
         return ((gaConversions?.total ?? 0) / sessions) * 100;
     }, [gaConversions?.total, gaOverview?.sessions]);
 
+    // Impressions-based trend for LinkedIn visibility
+    const liImpressionsTrendSeries = useMemo(() => liImpressionsSeries, [liImpressionsSeries]);
+
     const activeBasis = BASIS_PAGES[basisIndex] ?? BASIS_PAGES[0];
 
     const visibilityTrendData = useMemo(
@@ -519,10 +551,10 @@ export default function ComparativeStatisticsPage() {
             buildTrendData([
                 { key: 'instagram', points: filteredIgReach },
                 { key: 'facebook', points: filteredFbViews },
-                { key: 'linkedin', points: filteredLiPageViews },
+                { key: 'linkedin', points: liImpressionsTrendSeries },
                 { key: 'website', points: filteredGaPageviews },
             ]),
-        [filteredFbViews, filteredGaPageviews, filteredIgReach, filteredLiPageViews],
+        [filteredFbViews, filteredGaPageviews, filteredIgReach, liImpressionsTrendSeries],
     );
 
     const engagementTrendData = useMemo(
@@ -538,30 +570,30 @@ export default function ComparativeStatisticsPage() {
         () => [
             { channel: 'Instagram', value: sumValues(filteredIgFollows) },
             { channel: 'Facebook', value: sumValues(filteredFbFollows) },
-            { channel: 'LinkedIn', value: liOverview?.total_followers ?? 0 },
+            // LinkedIn followers not provided by /manual/linkedin/ endpoint — omit from bar
             { channel: 'Website', value: gaOverview?.users ?? 0 },
         ],
-        [filteredFbFollows, filteredIgFollows, gaOverview?.users, liOverview?.total_followers],
+        [filteredFbFollows, filteredIgFollows, gaOverview?.users],
     );
 
     const visibilityBarData = useMemo(
         () => [
             { channel: 'Instagram', value: sumValues(filteredIgReach) },
             { channel: 'Facebook', value: sumValues(filteredFbViews) },
-            { channel: 'LinkedIn', value: sumValues(filteredLiPageViews) },
+            { channel: 'LinkedIn', value: liTotalImpressions },
             { channel: 'Website', value: sumValues(filteredGaPageviews) },
         ],
-        [filteredFbViews, filteredGaPageviews, filteredIgReach, filteredLiPageViews],
+        [filteredFbViews, filteredGaPageviews, filteredIgReach, liTotalImpressions],
     );
 
     const engagementRateData = useMemo(
         () => [
             { channel: 'Instagram', value: Number(igEngagementRate.toFixed(2)) },
             { channel: 'Facebook', value: Number(fbEngagementRate.toFixed(2)) },
-            { channel: 'LinkedIn', value: Number(liAvgEngagementRate.toFixed(2)) },
+            { channel: 'LinkedIn', value: Number(liEngagementRate.toFixed(2)) },
             { channel: 'Website', value: Number((gaEngagement?.engagement_rate ?? 0).toFixed(2)) },
         ],
-        [fbEngagementRate, gaEngagement?.engagement_rate, igEngagementRate, liAvgEngagementRate],
+        [fbEngagementRate, gaEngagement?.engagement_rate, igEngagementRate, liEngagementRate],
     );
 
     const trafficBarData = useMemo(
@@ -706,7 +738,10 @@ export default function ComparativeStatisticsPage() {
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                         <MetricKPI label="Instagram Follows" value={sumValues(filteredIgFollows)} icon={<Users className="h-5 w-5" />} />
                         <MetricKPI label="Facebook Follows" value={sumValues(filteredFbFollows)} icon={<MessageCircleHeart className="h-5 w-5" />} />
-                        <MetricKPI label="LinkedIn Followers" value={liOverview?.total_followers ?? 0} icon={<Users className="h-5 w-5" />} />
+                        <div className="relative">
+                            <MetricKPI label="LinkedIn Followers" value="--" icon={<Users className="h-5 w-5" />} />
+                            <span className="absolute top-2 right-2 text-[9px] bg-stone-100 text-stone-400 border border-stone-200 rounded px-1 py-0.5">not provided</span>
+                        </div>
                         <MetricKPI label="Website Users" value={gaOverview?.users ?? 0} icon={<Globe className="h-5 w-5" />} />
                     </div>
 
@@ -754,9 +789,12 @@ export default function ComparativeStatisticsPage() {
                                         </tr>
                                         <tr className="border-b border-stone-100">
                                             <td className="py-2 pr-3 font-medium text-stone-800">LinkedIn</td>
-                                            <td className="py-2 pr-3 text-stone-700">Followers</td>
-                                            <td className="py-2 pr-3 text-stone-700">{(liOverview?.total_followers ?? 0).toLocaleString()}</td>
-                                            <td className="py-2 text-stone-700">{latestDateLabel(filteredLiUniqueVisitors)}</td>
+                                            <td className="py-2 pr-3 text-stone-700">
+                                                Followers
+                                                <span className="ml-1.5 text-[9px] bg-stone-100 text-stone-400 border border-stone-200 rounded px-1 py-0.5">not provided</span>
+                                            </td>
+                                            <td className="py-2 pr-3 text-stone-700">—</td>
+                                            <td className="py-2 text-stone-700">—</td>
                                         </tr>
                                         <tr>
                                             <td className="py-2 pr-3 font-medium text-stone-800">Website (GA4)</td>
@@ -775,7 +813,7 @@ export default function ComparativeStatisticsPage() {
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                         <MetricKPI label="Instagram Reach" value={sumValues(filteredIgReach)} icon={<Eye className="h-5 w-5" />} />
                         <MetricKPI label="Facebook Views" value={sumValues(filteredFbViews)} icon={<Eye className="h-5 w-5" />} />
-                        <MetricKPI label="LinkedIn Page Views" value={sumValues(filteredLiPageViews)} icon={<Eye className="h-5 w-5" />} />
+                        <MetricKPI label="LinkedIn Impressions" value={liTotalImpressions} icon={<Eye className="h-5 w-5" />} />
                         <MetricKPI label="Website Pageviews" value={sumValues(filteredGaPageviews)} icon={<Globe className="h-5 w-5" />} />
                     </div>
 
@@ -841,9 +879,9 @@ export default function ComparativeStatisticsPage() {
                                         </tr>
                                         <tr className="border-b border-stone-100">
                                             <td className="py-2 pr-3 font-medium text-stone-800">LinkedIn</td>
-                                            <td className="py-2 pr-3 text-stone-700">{sumValues(filteredLiPageViews).toLocaleString()} page views</td>
-                                            <td className="py-2 pr-3 text-stone-700">{sumValues(filteredLiUniqueVisitors).toLocaleString()} unique visitors</td>
-                                            <td className="py-2 text-stone-700">{latestDateLabel(filteredLiPageViews)}</td>
+                                            <td className="py-2 pr-3 text-stone-700">{liTotalImpressions.toLocaleString()} impressions</td>
+                                            <td className="py-2 pr-3 text-stone-700">{liTotalClicks.toLocaleString()} link clicks</td>
+                                            <td className="py-2 text-stone-700">{latestDateLabel(filteredLiImpressions)}</td>
                                         </tr>
                                         <tr>
                                             <td className="py-2 pr-3 font-medium text-stone-800">Website (GA4)</td>
@@ -862,7 +900,7 @@ export default function ComparativeStatisticsPage() {
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                         <MetricKPI label="IG Interactions" value={sumValues(filteredIgInteractions)} icon={<MessageCircleHeart className="h-5 w-5" />} />
                         <MetricKPI label="FB Interactions" value={sumValues(filteredFbInteractions)} icon={<MessageCircleHeart className="h-5 w-5" />} />
-                        <MetricKPI label="LI Interactions" value={liTotalInteractions} icon={<MessageCircleHeart className="h-5 w-5" />} />
+                        <MetricKPI label="LI Engagement" value={liTotalEngagement} icon={<MessageCircleHeart className="h-5 w-5" />} />
                         <MetricKPI label="GA Engaged Sessions" value={gaEngagement?.engaged_sessions ?? 0} icon={<Globe className="h-5 w-5" />} />
                     </div>
 
@@ -901,7 +939,7 @@ export default function ComparativeStatisticsPage() {
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                         <MetricKPI label="IG Link Clicks" value={sumValues(filteredIgClicks)} icon={<Eye className="h-5 w-5" />} />
                         <MetricKPI label="FB Link Clicks" value={sumValues(filteredFbClicks)} icon={<Eye className="h-5 w-5" />} />
-                        <MetricKPI label="LI Post Clicks" value={liTotalClicks} icon={<Eye className="h-5 w-5" />} />
+                        <MetricKPI label="LI Link Clicks" value={liTotalClicks} icon={<Eye className="h-5 w-5" />} />
                         <MetricKPI label="GA Conversions" value={gaConversions?.total ?? 0} icon={<Globe className="h-5 w-5" />} />
                     </div>
 
@@ -949,9 +987,9 @@ export default function ComparativeStatisticsPage() {
                                         </tr>
                                         <tr className="border-b border-stone-100">
                                             <td className="py-2 pr-3 font-medium text-stone-800">LinkedIn</td>
-                                            <td className="py-2 pr-3 text-stone-700">{liTotalClicks.toLocaleString()} clicks</td>
+                                            <td className="py-2 pr-3 text-stone-700">{liTotalClicks.toLocaleString()} link clicks</td>
                                             <td className="py-2 pr-3 text-stone-700">{liCtr.toFixed(2)}% CTR</td>
-                                            <td className="py-2 text-stone-700">Clicks / impressions from LinkedIn posts API</td>
+                                            <td className="py-2 text-stone-700">Link clicks / impressions from manual LinkedIn insights</td>
                                         </tr>
                                         <tr>
                                             <td className="py-2 pr-3 font-medium text-stone-800">Website (GA4)</td>

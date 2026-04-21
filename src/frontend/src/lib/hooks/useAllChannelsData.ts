@@ -224,9 +224,13 @@ export function useAllChannelsData(): AllChannelsData {
                 'views', 'viewers', 'content_interactions',
                 'facebook_link_clicks', 'facebook_visits', 'facebook_follows',
             ];
+            // LinkedIn metrics from /manual/linkedin/insights
             const liMetrics = [
-                'views', 'viewers', 'content_interactions',
-                'linkedin_link_clicks', 'linkedin_visits', 'linkedin_follows',
+                'impressions',
+                'clicks',
+                'reactions',
+                'comments',
+                'reposts',
             ];
 
             let igData: Map<string, MetricSeries> | null = null;
@@ -355,29 +359,36 @@ export function useAllChannelsData(): AllChannelsData {
 
             const liStats: ChannelStats = liData
                 ? {
-                    channel: 'linkedin', // Changed from 'instagram'
-                    followers: Math.round(liData.get('linkedin_follows')?.total ?? liStub.followers),
-                    followerGrowth: liData.get('linkedin_follows')?.latest ?? liStub.followerGrowth,
-                    engagement: Math.round(liData.get('content_interactions')?.total ?? liStub.engagement),
+                    channel: 'linkedin',
+                    followers: 0, // not available from /manual/linkedin/ endpoint
+                    followerGrowth: 0,
+                    // Engagement = Reactions + Comments + Reposts
+                    engagement: Math.round(
+                        (liData.get('reactions')?.total ?? 0) +
+                        (liData.get('comments')?.total ?? 0) +
+                        (liData.get('reposts')?.total ?? 0)
+                    ),
                     engagementRate:
-                        liData.get('content_interactions') && liData.get('views')
-                            ? Number(
-                                (
-                                    ((liData.get('content_interactions')!.total /
-                                        Math.max(liData.get('views')!.total, 1)) *
-                                        100
-                                    ).toFixed(2)
-                                ),
-                            )
+                        liData.get('reactions') || liData.get('comments') || liData.get('reposts')
+                            ? (() => {
+                                const eng =
+                                    (liData.get('reactions')?.total ?? 0) +
+                                    (liData.get('comments')?.total ?? 0) +
+                                    (liData.get('reposts')?.total ?? 0);
+                                const imp = Math.max(liData.get('impressions')?.total ?? 0, 1);
+                                return Number(((eng / imp) * 100).toFixed(2));
+                            })()
                             : liStub.engagementRate,
-                    impressions: Math.round(liData.get('views')?.total ?? liStub.impressions),
-                    reach: Math.round(liData.get('viewers')?.total ?? liStub.reach),
+                    // Views = Impressions
+                    impressions: Math.round(liData.get('impressions')?.total ?? liStub.impressions),
+                    reach: Math.round(liData.get('impressions')?.total ?? liStub.reach),
+                    // Traffic & Conversion = Link Clicks
                     ctr:
-                        liData.get('linkedin_link_clicks') && liData.get('views')
+                        liData.get('clicks') && liData.get('impressions')
                             ? Number(
                                 (
-                                    ((liData.get('linkedin_link_clicks')!.total /
-                                        Math.max(liData.get('views')!.total, 1)) *
+                                    ((liData.get('clicks')!.total /
+                                        Math.max(liData.get('impressions')!.total, 1)) *
                                         100
                                     ).toFixed(2)
                                 ),
@@ -409,13 +420,10 @@ export function useAllChannelsData(): AllChannelsData {
                         .filter(p => p.date)
                         .map(p => ({ date: p.date, value: p.value }))
                     : null;
-            const liFollowsSeries = liData?.get('linkedin_follows');
-            const liGrowthPoints =
-                liFollowsSeries && liFollowsSeries.points.length > 0
-                    ? liFollowsSeries.points
-                        .filter(p => p.date)
-                        .map(p => ({ date: p.date, value: p.value }))
-                    : null;
+            // LinkedIn follower growth: not available from /manual/linkedin/ endpoint
+            // — show empty points so the chart renders without LinkedIn data,
+            //   which displays as "data not given" in practice.
+            const liGrowthPoints: { date: string; value: number }[] | null = null;
             const websiteGrowthPoints =
                 gaPageviewsData?.series?.length
                     ? gaPageviewsData.series
@@ -429,9 +437,8 @@ export function useAllChannelsData(): AllChannelsData {
                 igGrowthPoints
                     ? { label: 'Instagram', color: '#E4405F', data: igGrowthPoints }
                     : stubGrowth[0],
-                liGrowthPoints
-                    ? { label: 'LinkedIn', color: '#0A66C2', data: liGrowthPoints }
-                    : stubGrowth[1],
+                // LinkedIn: follower data not available from /manual/linkedin/ endpoint
+                { label: 'LinkedIn (data not given)', color: '#0A66C2', data: [] },
                 {
                     label: 'Website',
                     color: '#4A90D9',
@@ -461,10 +468,17 @@ export function useAllChannelsData(): AllChannelsData {
                 },
                 {
                     channel: 'linkedin',
-                    followers: Math.round(liData?.get('linkedin_follows')?.total ?? 0),
-                    interactions: Math.round(liData?.get('content_interactions')?.total ?? 0),
-                    views: Math.round(liData?.get('views')?.total ?? liData?.get('viewers')?.total ?? 0),
-                    linkClicks: Math.round(liData?.get('linkedin_link_clicks')?.total ?? 0),
+                    followers: 0, // not provided by /manual/linkedin/ endpoint
+                    // Engagement = Reactions + Comments + Reposts
+                    interactions: Math.round(
+                        (liData?.get('reactions')?.total ?? 0) +
+                        (liData?.get('comments')?.total ?? 0) +
+                        (liData?.get('reposts')?.total ?? 0)
+                    ),
+                    // Views = Impressions
+                    views: Math.round(liData?.get('impressions')?.total ?? 0),
+                    // Traffic & Conversion = Link Clicks
+                    linkClicks: Math.round(liData?.get('clicks')?.total ?? 0),
                 },
                 {
                     channel: 'website',
