@@ -1,5 +1,12 @@
 import { Channel } from '@/types';
 
+/**
+ * Static channel metadata: id, slug, name, icon, colour, connection status.
+ * Health scores are NOT stored here — they are computed by the backend
+ * and served via /dashboard/summary → channelHealth.
+ * The healthScore field is set to 0 as a safe default; the dashboard
+ * reads the backend value instead.
+ */
 export const channels: Channel[] = [
     {
         id: 'ch-ig',
@@ -9,7 +16,7 @@ export const channels: Channel[] = [
         color: '#E4405F',
         isConnected: true,
         followers: 28400,
-        healthScore: 87,
+        healthScore: 0,
         lastSynced: '2026-03-04T18:30:00Z',
     },
     {
@@ -20,7 +27,7 @@ export const channels: Channel[] = [
         color: '#0A66C2',
         isConnected: true,
         followers: 12300,
-        healthScore: 74,
+        healthScore: 0,
         lastSynced: '2026-03-04T18:25:00Z',
     },
     {
@@ -31,7 +38,7 @@ export const channels: Channel[] = [
         color: '#25D366',
         isConnected: true,
         followers: 5200,
-        healthScore: 92,
+        healthScore: 0,
         lastSynced: '2026-03-04T18:28:00Z',
     },
     {
@@ -42,18 +49,18 @@ export const channels: Channel[] = [
         color: '#FF0000',
         isConnected: true,
         followers: 8750,
-        healthScore: 81,
+        healthScore: 0,
         lastSynced: '2026-03-04T18:20:00Z',
     },
     {
-    id: 'ch-facebook',
-    name: 'Facebook',
-    slug: 'facebook',
-    color: '#1877F2',
-    healthScore: 88, // or dynamic based on your data
-    followers: 0,    // your hook will override the stats, but the UI needs the metadata
-    icon: 'facebook', // (Match the string format used by your other channels)
-    isConnected: true,
-    lastSynced: 'Just now',
-  },
+        id: 'ch-facebook',
+        name: 'Facebook',
+        slug: 'facebook',
+        color: '#1877F2',
+        healthScore: 0,
+        followers: 0,
+        icon: 'facebook',
+        isConnected: true,
+        lastSynced: 'Just now',
+    },
 ];

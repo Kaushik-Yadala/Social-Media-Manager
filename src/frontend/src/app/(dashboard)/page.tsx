@@ -8,13 +8,10 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { channels } from '@/lib/stub-data/channels';
-import { engagementTrend } from '@/lib/stub-data/statistics';
 import { mainDashboardWidgets } from '@/lib/stub-data/widgets';
-import { alerts } from '@/lib/stub-data/alerts';
 import { WidgetDefinition } from '@/types';
 import { useAllChannelsData } from '@/lib/hooks/useAllChannelsData';
 import { Users, Eye, TrendingUp, MousePointerClick, Plus, Instagram, Linkedin, MessageCircle, Youtube, ArrowRight, X, Facebook } from 'lucide-react';
-import { PieChart, Pie, Cell } from 'recharts';
 
 
 const channelIcons: Record<string, React.ReactNode> = {
@@ -25,37 +22,48 @@ const channelIcons: Record<string, React.ReactNode> = {
     youtube: <Youtube className="h-4 w-4" />,
 };
 
-const COLORS = ['#E5A100', '#4A90D9', '#50B88C', '#9B6AD4', '#C75B39', '#3AAFA9'];
-
 // ---- Renders widget content based on widget definition ----
-function DashboardWidgetContent({ widget, channelStats }: { widget: WidgetDefinition; channelStats: ReturnType<typeof useAllChannelsData>['channelStats'] }) {
+function DashboardWidgetContent({
+    widget,
+    channelStats,
+    dashboardSummary,
+}: {
+    widget: WidgetDefinition;
+    channelStats: ReturnType<typeof useAllChannelsData>['channelStats'];
+    dashboardSummary: ReturnType<typeof useAllChannelsData>['dashboardSummary'];
+}) {
     const totalFollowers = channelStats.reduce((sum, s) => sum + s.followers, 0);
     const totalReach = channelStats.reduce((sum, s) => sum + s.reach, 0);
+    const followersChange = dashboardSummary.kpiChanges.followers ?? 0;
+    const reachChange    = dashboardSummary.kpiChanges.impressions ?? 0;
 
     switch (widget.id) {
         case 'w-overview':
             return (
                 <div className="p-4">
                     <div className="space-y-2.5">
-                        {channels.map(ch => (
-                            <Link key={ch.id} href={`/channels/${ch.slug}`} className="flex items-center gap-3 p-2 rounded-lg bg-stone-50 hover:bg-stone-100 transition-colors cursor-pointer group">
-                                <div className="flex items-center justify-center h-7 w-7 rounded-lg" style={{ backgroundColor: `${ch.color}15`, color: ch.color }}>
-                                    {channelIcons[ch.slug]}
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                    <div className="flex items-center justify-between">
-                                        <span className="text-xs font-medium text-stone-700">{ch.name}</span>
-                                        <Badge variant="outline" className={`text-[9px] ${ch.healthScore >= 80 ? 'bg-emerald-50 text-emerald-600 border-emerald-200' : ch.healthScore >= 60 ? 'bg-amber-50 text-amber-600 border-amber-200' : 'bg-red-50 text-red-600 border-red-200'}`}>
-                                            {ch.healthScore}%
-                                        </Badge>
+                        {channels.map(ch => {
+                            const score = dashboardSummary.channelHealth[ch.slug] ?? 0;
+                            return (
+                                <Link key={ch.id} href={`/channels/${ch.slug}`} className="flex items-center gap-3 p-2 rounded-lg bg-stone-50 hover:bg-stone-100 transition-colors cursor-pointer group">
+                                    <div className="flex items-center justify-center h-7 w-7 rounded-lg" style={{ backgroundColor: `${ch.color}15`, color: ch.color }}>
+                                        {channelIcons[ch.slug]}
                                     </div>
-                                    <div className="mt-1 h-1 rounded-full bg-stone-200 overflow-hidden">
-                                        <div className="h-full rounded-full transition-all duration-700" style={{ width: `${ch.healthScore}%`, backgroundColor: ch.healthScore >= 80 ? '#10B981' : ch.healthScore >= 60 ? '#F59E0B' : '#EF4444' }} />
+                                    <div className="flex-1 min-w-0">
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-xs font-medium text-stone-700">{ch.name}</span>
+                                            <Badge variant="outline" className={`text-[9px] ${score >= 80 ? 'bg-emerald-50 text-emerald-600 border-emerald-200' : score >= 60 ? 'bg-amber-50 text-amber-600 border-amber-200' : 'bg-red-50 text-red-600 border-red-200'}`}>
+                                                {score}%
+                                            </Badge>
+                                        </div>
+                                        <div className="mt-1 h-1 rounded-full bg-stone-200 overflow-hidden">
+                                            <div className="h-full rounded-full transition-all duration-700" style={{ width: `${score}%`, backgroundColor: score >= 80 ? '#10B981' : score >= 60 ? '#F59E0B' : '#EF4444' }} />
+                                        </div>
                                     </div>
-                                </div>
-                                <ArrowRight className="h-3 w-3 text-stone-300 opacity-0 group-hover:opacity-100 transition-opacity" />
-                            </Link>
-                        ))}
+                                    <ArrowRight className="h-3 w-3 text-stone-300 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                </Link>
+                            );
+                        })}
                     </div>
                 </div>
             );
@@ -63,7 +71,9 @@ function DashboardWidgetContent({ widget, channelStats }: { widget: WidgetDefini
             return (
                 <div className="p-4 flex flex-col justify-center h-full">
                     <p className="text-2xl font-semibold text-stone-900">{totalFollowers.toLocaleString()}</p>
-                    <p className="text-xs text-emerald-600 mt-1">↑ 5.2% vs last month</p>
+                    <p className={`text-xs mt-1 ${followersChange >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                        {followersChange >= 0 ? '↑' : '↓'} {Math.abs(followersChange).toFixed(1)}% vs last month
+                    </p>
                 </div>
             );
         case 'w-engagement-trend':
@@ -71,7 +81,7 @@ function DashboardWidgetContent({ widget, channelStats }: { widget: WidgetDefini
                 <div className="p-3 h-full">
                     <div className="h-[200px]">
                         <ResponsiveContainer width="100%" height="100%">
-                            <AreaChart data={engagementTrend[0].data.map(p => ({ date: p.date.slice(8), value: p.value }))}>
+                            <AreaChart data={dashboardSummary.engagementTrend.map(p => ({ date: p.date.slice(8), value: p.value }))}>
                                 <CartesianGrid strokeDasharray="3 3" stroke="#E7E5E4" />
                                 <XAxis dataKey="date" tick={{ fontSize: 9, fill: '#78716C' }} />
                                 <YAxis tick={{ fontSize: 9, fill: '#78716C' }} />
@@ -86,24 +96,21 @@ function DashboardWidgetContent({ widget, channelStats }: { widget: WidgetDefini
             return (
                 <div className="p-4 flex flex-col justify-center h-full">
                     <p className="text-2xl font-semibold text-stone-900">{totalReach.toLocaleString()}</p>
-                    <p className="text-xs text-emerald-600 mt-1">↑ 8.5% vs last month</p>
+                    <p className={`text-xs mt-1 ${reachChange >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                        {reachChange >= 0 ? '↑' : '↓'} {Math.abs(reachChange).toFixed(1)}% vs last month
+                    </p>
                 </div>
             );
         case 'w-top-posts': {
-            const topPosts = [
-                { title: 'Behind the scenes of our latest mural...', engagement: '2,700', type: 'Reel' },
-                { title: '60 seconds of pure creativity 🎨', engagement: '3,453', type: 'Reel' },
-                { title: 'Our top 5 art collections this season', engagement: '2,055', type: 'Carousel' },
-            ];
             return (
                 <div className="p-3">
                     <div className="space-y-2">
-                        {topPosts.map((post, i) => (
+                        {dashboardSummary.topPosts.map((post, i) => (
                             <div key={i} className="flex items-center gap-2.5 p-2 rounded-lg bg-stone-50">
                                 <span className="text-[10px] font-bold text-amber-500 w-4">#{i + 1}</span>
                                 <div className="flex-1 min-w-0">
                                     <p className="text-[11px] text-stone-700 truncate">{post.title}</p>
-                                    <p className="text-[9px] text-stone-400">{post.engagement} interactions · {post.type}</p>
+                                    <p className="text-[9px] text-stone-400">{post.engagement.toLocaleString()} interactions · {post.type}</p>
                                 </div>
                             </div>
                         ))}
@@ -142,16 +149,20 @@ export default function DashboardPage() {
     const [activeWidgets, setActiveWidgets] = useState<WidgetDefinition[]>([]);
     const [sheetOpen, setSheetOpen] = useState(false);
 
-    // Live data from stub server, falls back to static stubs if unavailable
-    const { channelStats, followerGrowthTrend, loading } = useAllChannelsData();
+    // Live data from backend, falls back to static stubs if unavailable
+    const { channelStats, followerGrowthTrend, dashboardSummary, loading } = useAllChannelsData();
 
-    const totalFollowers = channelStats.reduce((sum, s) => sum + s.followers, 0);
-    const avgEngagement = (channelStats.reduce((sum, s) => sum + s.engagementRate, 0) / channelStats.length).toFixed(1);
-    const totalImpressions = channelStats.reduce((sum, s) => sum + s.impressions, 0);
-    const avgCTR = (channelStats.reduce((sum, s) => sum + s.ctr, 0) / channelStats.length).toFixed(1);
-    const activeAlerts = alerts.filter(a => a.status === 'active').length;
+    // ── Derived KPIs ─────────────────────────────────────────────────────────
+    const totalFollowers    = channelStats.reduce((sum, s) => sum + s.followers, 0);
+    const avgEngagement     = (channelStats.reduce((sum, s) => sum + s.engagementRate, 0) / channelStats.length).toFixed(1);
+    const totalImpressions  = channelStats.reduce((sum, s) => sum + s.impressions, 0);
+    const avgCTR            = (channelStats.reduce((sum, s) => sum + s.ctr, 0) / channelStats.length).toFixed(1);
 
-    // Combined follower growth data for chart — guard against empty arrays
+    // KPI change %s from backend (or stubs)
+    const kpi = dashboardSummary.kpiChanges;
+    const activeAlerts = dashboardSummary.alerts.filter(a => a.status === 'active').length;
+
+    // Combined follower growth chart data
     const baseGrowthData = followerGrowthTrend[0]?.data ?? [];
     const growthChartData = baseGrowthData.map((point, i) => ({
         date: point.date.slice(5),
@@ -222,10 +233,10 @@ export default function DashboardPage() {
 
             {/* KPI Row */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                <MetricKPI label="Total Followers" value={loading ? '…' : totalFollowers} change={5.2} changeLabel="vs last month" icon={<Users className="h-5 w-5" />} />
-                <MetricKPI label="Avg Engagement Rate" value={loading ? '…' : `${avgEngagement}%`} change={1.8} changeLabel="vs last month" icon={<TrendingUp className="h-5 w-5" />} />
-                <MetricKPI label="Total Impressions" value={loading ? '…' : totalImpressions} change={12.4} changeLabel="vs last month" icon={<Eye className="h-5 w-5" />} />
-                <MetricKPI label="Avg CTR" value={loading ? '…' : `${avgCTR}%`} change={-0.3} changeLabel="vs last month" icon={<MousePointerClick className="h-5 w-5" />} />
+                <MetricKPI label="Total Followers"    value={loading ? '…' : totalFollowers}          change={kpi.followers   ?? 0} changeLabel="vs last month" icon={<Users className="h-5 w-5" />} />
+                <MetricKPI label="Avg Engagement Rate" value={loading ? '…' : `${avgEngagement}%`}   change={kpi.engagement  ?? 0} changeLabel="vs last month" icon={<TrendingUp className="h-5 w-5" />} />
+                <MetricKPI label="Total Impressions"   value={loading ? '…' : totalImpressions}       change={kpi.impressions ?? 0} changeLabel="vs last month" icon={<Eye className="h-5 w-5" />} />
+                <MetricKPI label="Avg CTR"             value={loading ? '…' : `${avgCTR}%`}           change={kpi.ctr        ?? 0} changeLabel="vs last month" icon={<MousePointerClick className="h-5 w-5" />} />
             </div>
 
             {/* Custom Widgets Section */}
@@ -250,7 +261,7 @@ export default function DashboardPage() {
                                     </div>
                                 </CardHeader>
                                 <CardContent className="p-0">
-                                    <DashboardWidgetContent widget={w} channelStats={channelStats} />
+                                    <DashboardWidgetContent widget={w} channelStats={channelStats} dashboardSummary={dashboardSummary} />
                                 </CardContent>
                             </Card>
                         ))}
@@ -270,21 +281,21 @@ export default function DashboardPage() {
                                 <YAxis tick={{ fontSize: 11, fill: '#78716C' }} />
                                 <Tooltip contentStyle={{ borderRadius: 8, border: '1px solid #E7E5E4', fontSize: 12 }} />
                                 <Area type="monotone" dataKey="Instagram" stroke="#E4405F" fill="#E4405F" fillOpacity={0.1} strokeWidth={2} />
-                                <Area type="monotone" dataKey="LinkedIn" stroke="#0A66C2" fill="#0A66C2" fillOpacity={0.1} strokeWidth={2} />
-                                <Area type="monotone" dataKey="WhatsApp" stroke="#25D366" fill="#25D366" fillOpacity={0.1} strokeWidth={2} />
-                                <Area type="monotone" dataKey="YouTube" stroke="#FF0000" fill="#FF0000" fillOpacity={0.1} strokeWidth={2} />
-                                <Area type="monotone" dataKey="Facebook" stroke="#1877F2" fill="#1877F2" fillOpacity={0.1} strokeWidth={2} />
+                                <Area type="monotone" dataKey="LinkedIn"  stroke="#0A66C2" fill="#0A66C2" fillOpacity={0.1} strokeWidth={2} />
+                                <Area type="monotone" dataKey="WhatsApp"  stroke="#25D366" fill="#25D366" fillOpacity={0.1} strokeWidth={2} />
+                                <Area type="monotone" dataKey="YouTube"   stroke="#FF0000" fill="#FF0000" fillOpacity={0.1} strokeWidth={2} />
+                                <Area type="monotone" dataKey="Facebook"  stroke="#1877F2" fill="#1877F2" fillOpacity={0.1} strokeWidth={2} />
                                 <Legend />
                             </AreaChart>
                         </ResponsiveContainer>
                     </div>
                 </ChartCard>
 
-                {/* Engagement Trend */}
+                {/* Engagement Trend — from backend */}
                 <ChartCard title="Engagement Trend" description="Last 30 days combined engagement">
                     <div className="h-64">
                         <ResponsiveContainer width="100%" height="100%">
-                            <AreaChart data={engagementTrend[0].data.map(p => ({ date: p.date.slice(8), value: p.value }))}>
+                            <AreaChart data={dashboardSummary.engagementTrend.map(p => ({ date: p.date.slice(8), value: p.value }))}>
                                 <CartesianGrid strokeDasharray="3 3" stroke="#E7E5E4" />
                                 <XAxis dataKey="date" tick={{ fontSize: 11, fill: '#78716C' }} />
                                 <YAxis tick={{ fontSize: 11, fill: '#78716C' }} />
@@ -298,7 +309,7 @@ export default function DashboardPage() {
 
             {/* Channel Health + Active Alerts */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                {/* Channel Health */}
+                {/* Channel Health — computed scores from backend */}
                 <Card className="lg:col-span-2">
                     <CardHeader>
                         <CardTitle className="text-sm font-medium text-stone-700">Channel Health Overview</CardTitle>
@@ -306,10 +317,9 @@ export default function DashboardPage() {
                     <CardContent>
                         <div className="space-y-3">
                             {channels.map(ch => {
-                                //  Find the live stats for this specific channel from the hook
                                 const liveStats = channelStats.find(s => s.channel === ch.slug);
-                                // Use live followers if available, otherwise fallback to stub
                                 const displayFollowers = liveStats ? liveStats.followers : ch.followers;
+                                const score = dashboardSummary.channelHealth[ch.slug] ?? 0;
 
                                 return (
                                     <Link key={ch.id} href={`/channels/${ch.slug}`} className="flex items-center gap-4 p-3 rounded-lg bg-stone-50 hover:bg-stone-100 transition-colors cursor-pointer group">
@@ -319,12 +329,12 @@ export default function DashboardPage() {
                                         <div className="flex-1">
                                             <div className="flex items-center justify-between">
                                                 <span className="text-sm font-medium text-stone-800">{ch.name}</span>
-                                                <Badge variant={ch.healthScore >= 80 ? 'default' : ch.healthScore >= 60 ? 'secondary' : 'destructive'} className={ch.healthScore >= 80 ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-100' : ''}>
-                                                    {ch.healthScore}%
+                                                <Badge variant={score >= 80 ? 'default' : score >= 60 ? 'secondary' : 'destructive'} className={score >= 80 ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-100' : ''}>
+                                                    {score}%
                                                 </Badge>
                                             </div>
                                             <div className="mt-1.5 h-1.5 rounded-full bg-stone-200 overflow-hidden">
-                                                <div className="h-full rounded-full transition-all duration-700" style={{ width: `${ch.healthScore}%`, backgroundColor: ch.healthScore >= 80 ? '#10B981' : ch.healthScore >= 60 ? '#F59E0B' : '#EF4444' }} />
+                                                <div className="h-full rounded-full transition-all duration-700" style={{ width: `${score}%`, backgroundColor: score >= 80 ? '#10B981' : score >= 60 ? '#F59E0B' : '#EF4444' }} />
                                             </div>
                                         </div>
                                         <div className="flex items-center gap-2">
@@ -340,7 +350,7 @@ export default function DashboardPage() {
                     </CardContent>
                 </Card>
 
-                {/* Active Alerts */}
+                {/* Active Alerts — from backend */}
                 <Card>
                     <CardHeader className="flex flex-row items-center justify-between">
                         <CardTitle className="text-sm font-medium text-stone-700">Active Alerts</CardTitle>
@@ -348,7 +358,7 @@ export default function DashboardPage() {
                     </CardHeader>
                     <CardContent>
                         <div className="space-y-3">
-                            {alerts.filter(a => a.status === 'active').slice(0, 4).map(alert => (
+                            {dashboardSummary.alerts.filter(a => a.status === 'active').slice(0, 4).map(alert => (
                                 <Link key={alert.id} href="/alerts" className="flex items-start gap-3 p-2 rounded-lg hover:bg-stone-50 transition-colors cursor-pointer">
                                     <div className={`mt-0.5 h-2 w-2 rounded-full shrink-0 ${alert.severity === 'high' ? 'bg-red-500' : alert.severity === 'medium' ? 'bg-amber-500' : 'bg-blue-500'}`} />
                                     <div>

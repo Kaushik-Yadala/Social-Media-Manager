@@ -12,11 +12,12 @@
  */
 
 import { useState, useEffect } from 'react';
-import { ChannelStats, TimeSeries } from '@/types';
+import { ChannelStats, TimeSeries, Alert } from '@/types';
 import {
     channelStats as stubStats,
     followerGrowthTrend as stubGrowth,
 } from '@/lib/stub-data/statistics';
+import { alerts as stubAlerts } from '@/lib/stub-data/alerts';
 
 const API_BASE =
     (typeof process !== 'undefined' && process.env.NEXT_PUBLIC_API_BASE_URL) ||
@@ -104,11 +105,53 @@ async function fetchManualInsights(
     return parseManualSeries(payload);
 }
 
+/* ── Dashboard summary types ─────────────────────────────────────────────── */
+
+export interface TopPost {
+    title: string;
+    engagement: number;
+    type: string;
+    channel: string;
+}
+
+export interface DashboardSummary {
+    channelHealth: Record<string, number>;
+    kpiChanges: Record<string, number>;
+    engagementTrend: { date: string; value: number }[];
+    alerts: Alert[];
+    topPosts: TopPost[];
+}
+
+// Deterministic stub engagement trend (matches backend stub shape)
+const STUB_ENGAGEMENT_TREND: { date: string; value: number }[] = Array.from({ length: 30 }, (_, i) => {
+    const d = new Date('2026-02-01');
+    d.setDate(d.getDate() + i);
+    return {
+        date: d.toISOString().slice(0, 10),
+        value: 2850 + 14 * i + (i % 7) * 45,
+    };
+});
+
+const STUB_TOP_POSTS: TopPost[] = [
+    { title: 'Behind the scenes of our latest mural installation', engagement: 2700, type: 'Reel', channel: 'instagram' },
+    { title: '60 seconds of pure creativity 🎨', engagement: 3453, type: 'Reel', channel: 'instagram' },
+    { title: 'Our top 5 art collections this season', engagement: 2055, type: 'Carousel', channel: 'instagram' },
+];
+
+const STUB_CHANNEL_HEALTH: Record<string, number> = {
+    instagram: 82, facebook: 76, linkedin: 68, whatsapp: 90, youtube: 79,
+};
+
+const STUB_KPI_CHANGES: Record<string, number> = {
+    followers: 5.2, engagement: 1.8, impressions: 12.4, ctr: -0.3,
+};
+
 /* ── Hook ───────────────────────────────────────────────────────────────────── */
 
 export interface AllChannelsData {
     channelStats: ChannelStats[];
     followerGrowthTrend: TimeSeries[];
+    dashboardSummary: DashboardSummary;
     loading: boolean;
     error: string | null;
 }
@@ -116,6 +159,13 @@ export interface AllChannelsData {
 export function useAllChannelsData(): AllChannelsData {
     const [channelStats, setChannelStats] = useState<ChannelStats[]>(stubStats);
     const [followerGrowthTrend, setFollowerGrowthTrend] = useState<TimeSeries[]>(stubGrowth);
+    const [dashboardSummary, setDashboardSummary] = useState<DashboardSummary>({
+        channelHealth: STUB_CHANNEL_HEALTH,
+        kpiChanges: STUB_KPI_CHANGES,
+        engagementTrend: STUB_ENGAGEMENT_TREND,
+        alerts: stubAlerts,
+        topPosts: STUB_TOP_POSTS,
+    });
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
@@ -142,14 +192,22 @@ export function useAllChannelsData(): AllChannelsData {
             let igData: Map<string, MetricSeries> | null = null;
             let fbData: Map<string, MetricSeries> | null = null;
             let liData: Map<string, MetricSeries> | null = null;
+            let summaryData: DashboardSummary | null = null;
             let fetchError: string | null = null;
 
             try {
-                [igData, fbData, liData] = await Promise.all([
+                const [igResult, fbResult, liResult, summaryResult] = await Promise.all([
                     fetchManualInsights('insta', igMetrics).catch(() => null),
                     fetchManualInsights('facebook', fbMetrics).catch(() => null),
                     fetchManualInsights('linkedin', liMetrics).catch(() => null),
+                    fetch(`${API_BASE}/dashboard/summary`, { cache: 'no-store' })
+                        .then(r => r.ok ? r.json() as Promise<DashboardSummary> : null)
+                        .catch(() => null),
                 ]);
+                igData = igResult;
+                fbData = fbResult;
+                liData = liResult;
+                summaryData = summaryResult;
             } catch (err) {
                 fetchError = (err as Error)?.message || 'Failed to load channel data';
             }
@@ -311,6 +369,18 @@ export function useAllChannelsData(): AllChannelsData {
 
             setChannelStats(merged);
             setFollowerGrowthTrend(mergedGrowth);
+
+            // Apply dashboard summary from backend (or keep stubs)
+            if (summaryData) {
+                setDashboardSummary({
+                    channelHealth: summaryData.channelHealth ?? STUB_CHANNEL_HEALTH,
+                    kpiChanges: summaryData.kpiChanges ?? STUB_KPI_CHANGES,
+                    engagementTrend: summaryData.engagementTrend ?? STUB_ENGAGEMENT_TREND,
+                    alerts: summaryData.alerts ?? stubAlerts,
+                    topPosts: summaryData.topPosts ?? STUB_TOP_POSTS,
+                });
+            }
+
             setLoading(false);
         }
 
@@ -323,5 +393,5 @@ export function useAllChannelsData(): AllChannelsData {
         return () => { cancelled = true; };
     }, []);
 
-    return { channelStats, followerGrowthTrend, loading, error };
+    return { channelStats, followerGrowthTrend, dashboardSummary, loading, error };
 }

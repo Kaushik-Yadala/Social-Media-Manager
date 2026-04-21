@@ -16,6 +16,7 @@ from routes.wa_routes import router as wa_router
 from routes.social_insights_routes import router as social_insights_router
 from routes.trends_routes import router as trends_router
 from routes.competitor_routes import router as competitor_router
+from routes.dashboard_routes import router as dashboard_router
 from services.scheduler import trends_scheduler
 
 @asynccontextmanager
@@ -63,6 +64,7 @@ app.include_router(wa_router)
 app.include_router(social_insights_router)
 app.include_router(trends_router)
 app.include_router(competitor_router)
+app.include_router(dashboard_router)
 
 
 # ── Root / Health ─────────────────────────────────────────────────────────────
