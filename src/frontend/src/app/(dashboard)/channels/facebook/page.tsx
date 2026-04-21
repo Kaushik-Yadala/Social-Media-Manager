@@ -145,6 +145,21 @@ interface DateRangeBounds {
     endDate: Date;
 }
 
+type DashboardTimeframePreset =
+    | 'last_7_days'
+    | 'last_30_days'
+    | 'last_90_days'
+    | 'all_time'
+    | 'custom';
+
+const DASHBOARD_TIMEFRAME_OPTIONS: Array<{ value: DashboardTimeframePreset; label: string }> = [
+    { value: 'last_7_days', label: 'Last 7 days' },
+    { value: 'last_30_days', label: 'Last 30 days' },
+    { value: 'last_90_days', label: 'Last 90 days' },
+    { value: 'all_time', label: 'All time' },
+    { value: 'custom', label: 'Custom range' },
+];
+
 function stringifyDetail(detail: unknown): string {
     if (typeof detail === 'string') return detail;
     if (Array.isArray(detail)) {
@@ -200,6 +215,13 @@ function getLastWeekDateRange(): DateRange {
     const to = new Date();
     const from = new Date(to);
     from.setDate(to.getDate() - 6);
+    return { from, to };
+}
+
+function getRelativeDateRange(days: number): DateRange {
+    const to = endOfDay(new Date());
+    const from = startOfDay(new Date(to));
+    from.setDate(from.getDate() - (days - 1));
     return { from, to };
 }
 
@@ -507,6 +529,7 @@ export default function FacebookPage() {
     const dragItemRef = useRef<string | null>(null);
     const defaultDateRangeInitializedRef = useRef(false);
     const [selectedCalendarRange, setSelectedCalendarRange] = useState<DateRange | undefined>();
+    const [dashboardTimeframe, setDashboardTimeframe] = useState<DashboardTimeframePreset>('last_7_days');
     const dashboardLayoutUserId = user?.id || FACEBOOK_USER_ID;
 
     const loadDashboardData = useCallback(async () => {
@@ -585,8 +608,29 @@ export default function FacebookPage() {
     useEffect(() => {
         if (defaultDateRangeInitializedRef.current || isLoading) return;
         setSelectedCalendarRange(latestValidWeekRange || getLastWeekDateRange());
+        setDashboardTimeframe('last_7_days');
         defaultDateRangeInitializedRef.current = true;
     }, [isLoading, latestValidWeekRange]);
+
+    const applyDashboardTimeframe = useCallback((preset: DashboardTimeframePreset) => {
+        setDashboardTimeframe(preset);
+        if (preset === 'all_time') {
+            setSelectedCalendarRange(undefined);
+            return;
+        }
+        if (preset === 'last_7_days') {
+            setSelectedCalendarRange(getRelativeDateRange(7));
+            return;
+        }
+        if (preset === 'last_30_days') {
+            setSelectedCalendarRange(getRelativeDateRange(30));
+            return;
+        }
+        if (preset === 'last_90_days') {
+            setSelectedCalendarRange(getRelativeDateRange(90));
+            return;
+        }
+    }, []);
 
     const selectedDateRange = useMemo<DateRangeBounds | null>(() => {
         if (!selectedCalendarRange?.from || !selectedCalendarRange.to) return null;
@@ -1211,6 +1255,21 @@ export default function FacebookPage() {
                             <span className="font-semibold">{FACEBOOK_USER_ID}</span>
                         </p>
                         <div className="mt-2 flex flex-wrap items-center gap-2">
+                            <Select
+                                value={dashboardTimeframe}
+                                onValueChange={(value) => applyDashboardTimeframe(value as DashboardTimeframePreset)}
+                            >
+                                <SelectTrigger className="h-8 w-[150px] text-xs">
+                                    <SelectValue placeholder="Timeframe" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {DASHBOARD_TIMEFRAME_OPTIONS.map((option) => (
+                                        <SelectItem key={option.value} value={option.value}>
+                                            {option.label}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
                             <Popover>
                                 <PopoverTrigger asChild>
                                     <Button variant="outline" size="sm" className="h-8 text-xs text-stone-700">
@@ -1222,7 +1281,16 @@ export default function FacebookPage() {
                                     <DayPicker
                                         mode="range"
                                         selected={selectedCalendarRange}
-                                        onSelect={setSelectedCalendarRange}
+                                        onSelect={(range) => {
+                                            setSelectedCalendarRange(range);
+                                            if (!range?.from && !range?.to) {
+                                                setDashboardTimeframe('all_time');
+                                                return;
+                                            }
+                                            if (range?.from && range.to) {
+                                                setDashboardTimeframe('custom');
+                                            }
+                                        }}
                                         numberOfMonths={2}
                                         className="p-3"
                                         classNames={{
@@ -1262,7 +1330,10 @@ export default function FacebookPage() {
                                 variant="ghost"
                                 size="sm"
                                 className="h-8 text-xs"
-                                onClick={() => setSelectedCalendarRange(undefined)}
+                                onClick={() => {
+                                    setSelectedCalendarRange(undefined);
+                                    setDashboardTimeframe('all_time');
+                                }}
                                 disabled={!selectedCalendarRange?.from && !selectedCalendarRange?.to}
                             >
                                 Clear dates
