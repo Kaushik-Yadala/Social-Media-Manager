@@ -1,6 +1,6 @@
 # Engagement Prediction & Generation API — Documentation
 
-**Base URL:** `http://localhost:8000`  
+**Base URL:** `http://localhost:8001`  
 **Framework:** FastAPI  
 **Version:** 1.0.0
 
@@ -73,7 +73,7 @@ The post fields are passed through the same feature engineering pipeline used du
 #### Example Request
 
 ```bash
-curl -X POST http://localhost:8000/predict \
+curl -X POST http://localhost:8001/predict \
   -H "Content-Type: application/json" \
   -d '{
     "description": "Handcrafted with love. Our new block-print tote bags are here! #handmade #sustainable #blockprint",
@@ -137,7 +137,7 @@ The top 5 highest `like_rate` posts matching the requested `post_type` are fetch
 #### Example Request
 
 ```bash
-curl -X POST http://localhost:8000/generate_ideas \
+curl -X POST http://localhost:8001/generate_ideas \
   -H "Content-Type: application/json" \
   -d '{
     "topic": "Diwali gifting hampers",
@@ -195,7 +195,7 @@ None. This endpoint takes no input — it runs autonomously based on your config
 #### Example Request
 
 ```bash
-curl -X POST http://localhost:8000/generate_insight
+curl -X POST http://localhost:8001/generate_insight
 ```
 
 #### Response
@@ -253,7 +253,7 @@ The term is lowercased and inserted into the `tracked_terms` MongoDB collection 
 #### Example Request
 
 ```bash
-curl -X POST http://localhost:8000/terms/add \
+curl -X POST http://localhost:8001/terms/add \
   -H "Content-Type: application/json" \
   -d '{"term": "khadi"}'
 ```
@@ -287,7 +287,7 @@ None.
 #### Example Request
 
 ```bash
-curl http://localhost:8000/terms/list
+curl http://localhost:8001/terms/list
 ```
 
 #### Response
@@ -326,7 +326,7 @@ Performs a hard delete (`delete_one`) on the matching document in `tracked_terms
 #### Example Request
 
 ```bash
-curl -X DELETE http://localhost:8000/terms/remove \
+curl -X DELETE http://localhost:8001/terms/remove \
   -H "Content-Type: application/json" \
   -d '{"term": "khadi"}'
 ```
@@ -420,7 +420,7 @@ None. This endpoint takes no input parameters.
 #### Example Request
 
 ```bash
-curl -X POST http://localhost:8000/admin/reload_model
+curl -X POST http://localhost:8001/admin/reload_model
 ```
 
 #### Response — Success (`200 OK`)

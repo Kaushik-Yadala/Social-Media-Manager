@@ -6,6 +6,7 @@ import shap
 import os
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pymongo import MongoClient
 from pydantic import BaseModel
 from dotenv import load_dotenv
@@ -94,6 +95,14 @@ async def lifespan(app: FastAPI):
     # (shutdown logic can go here if needed)
 
 app = FastAPI(title="Engagement Prediction & Generation API", lifespan=lifespan)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 @app.post("/generate_ideas")
 def generate_ideas_from_top_posts(req: IdeationRequest):
