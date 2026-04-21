@@ -10,6 +10,7 @@ import { trendingTopics as stubTopics, suggestedActions as stubActions, trendGro
 import { competitors as stubCompetitors } from '@/lib/stub-data/competitors';
 import { getTrendsInsights, refreshTrends, getTrendsStatus, type TrendsInsightsResponse, type SchedulerStatus } from '@/lib/api/trends-api';
 import { getCompetitors, type CompetitorsResult } from '@/lib/api/competitors-api';
+import { MlInsightsStudio } from '@/components/predictive/MlInsightsStudio';
 import { TrendingUp, Zap, ArrowRight, Sparkles, Target, Instagram, Linkedin, MessageCircle, RefreshCw, Loader2, Facebook, Youtube, BarChart3 } from 'lucide-react';
 
 const channelIcons: Record<string, React.ReactNode> = {
@@ -317,6 +318,9 @@ export default function PredictivePage() {
                     </div>
                 </CardContent>
             </Card>
+
+            {/* ── ML Service Studio ───────────────────────────────────── */}
+            <MlInsightsStudio />
 
             {/* ── Data source footer ──────────────────────────────────── */}
             {data?.last_updated && (

@@ -32,6 +32,7 @@ from models.trends_models import (
     TrendTrajectory,
     TrendsResponse,
 )
+from services.competitor_service import COMPETITORS
 
 logger = logging.getLogger(__name__)
 
@@ -299,11 +300,15 @@ async def analyze_with_ai(
 
     If all providers fail the caller falls back to hardcoded data (not cached).
     """
-    # Build prompt context
+    # Build prompt context from unified registry
     url_to_name: dict[str, str] = {}
-    for comp in _DEFAULT_COMPETITORS:
-        for url in comp["urls"]:
-            url_to_name[url] = comp["name"]
+    for comp in COMPETITORS:
+        web = comp.get("website")
+        if web:
+            if isinstance(web, list):
+                for url in web: url_to_name[url] = comp["name"]
+            else:
+                url_to_name[web] = comp["name"]
 
     context = _build_lean_context(scraped_data, url_to_name)
     if not context.strip():
@@ -371,47 +376,7 @@ async def analyze_with_ai(
     # ── 2. Try Groq (free, no daily cap issues for this scale) ───────────────
     return await _call_groq(prompt)
 
-# ── Real competitor list ───────────────────────────────────────────────────────
-
-_DEFAULT_COMPETITORS = [
-    {
-        "name": "Jaypore",
-        "urls": [
-            "https://www.jaypore.com",
-        ],
-    },
-    {
-        "name": "Okhai",
-        "urls": [
-            "https://okhai.org",
-            "https://okhai.org/collections",
-        ],
-    },
-    {
-        "name": "iTokri",
-        "urls": [
-            "https://www.itokri.com",
-        ],
-    },
-    {
-        "name": "GoCoop",
-        "urls": [
-            "https://www.gocoop.com",
-        ],
-    },
-    {
-        "name": "Sirohi",
-        "urls": [
-            "https://www.sirohi.org",
-        ],
-    },
-    {
-        "name": "The Good Road",
-        "urls": [
-            "https://thegoodroad.in",
-        ],
-    },
-]
+# ── Cache config ──────────────────────────────────────────────────────────────
 
 CACHE_COLLECTION = "trends_cache"
 CACHE_TTL_HOURS = 72  # 3 days — survive Gemini daily quota resets
@@ -544,14 +509,21 @@ async def get_competitor_insights(force_refresh: bool = False) -> TrendsResponse
             logger.info("Serving trends from cache")
             return TrendsResponse(**cached)
 
-    # 2. Scrape all competitor URLs
+    # 2. Scrape all competitor URLs from the unified registry
     all_urls: list[str] = []
     names: list[str] = []
-    for comp in _DEFAULT_COMPETITORS:
-        all_urls.extend(comp["urls"])
-        names.append(comp["name"])
+    for comp in COMPETITORS:
+        # Use primary website URL. 
+        # Support both single string and legacy list if needed, but DB-based are strings.
+        web = comp.get("website")
+        if web:
+            if isinstance(web, list):
+                all_urls.extend(web)
+            else:
+                all_urls.append(web)
+            names.append(comp["name"])
 
-    logger.info("Scraping %d URLs for %d competitors", len(all_urls), len(names))
+    logger.info("Scraping %d URLs for %d competitors from registry", len(all_urls), len(names))
     scraped = await scrape_competitor_pages(all_urls)
     logger.info("Successfully scraped %d pages", len(scraped))
 

@@ -1,4 +1,5 @@
 import os
+import time
 from pymongo import MongoClient
 import chromadb
 from dotenv import load_dotenv
@@ -44,6 +45,13 @@ def sync_new_posts() -> int:
     existing_ids_typed = [try_int(i) for i in existing_ids_str]
  
     new_posts = list(posts_collection.find({"post_id": {"$nin": existing_ids_typed}}))
+
+    max_sync = os.getenv("MAX_SYNC_EMBEDS")
+    if max_sync and max_sync.isdigit():
+        limit = int(max_sync)
+        if len(new_posts) > limit:
+            print(f"Limiting sync to {limit} posts to prevent rate limiting.")
+            new_posts = new_posts[:limit]
  
     if not new_posts:
         print("Everything is up to date. No new posts to sync.")
@@ -66,6 +74,7 @@ def sync_new_posts() -> int:
         ids.append(post_id)
         documents.append(text)
         embeddings.append(embed_text(text))
+        time.sleep(0.65)
         metadatas.append({
             "Post_type": post.get("post_type", "unknown"),
             "Like_Rate": float(post.get("like_rate", 0.0))

@@ -6,6 +6,7 @@ import shap
 import os
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pymongo import MongoClient
 from pydantic import BaseModel
 from dotenv import load_dotenv
@@ -45,7 +46,6 @@ app = FastAPI(title="Engagement Prediction & Generation API")
 MODEL = None
 MODEL_COLUMNS = None
 EXPLAINER = None
-HISTORICAL_DF = None
 
 class PostRequest(BaseModel):
     description: str
@@ -64,7 +64,7 @@ class IdeationRequest(BaseModel):
 # to never be populated and cold-start/vector-DB sync logic to be lost.
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global MODEL, MODEL_COLUMNS, EXPLAINER, HISTORICAL_DF
+    global MODEL, MODEL_COLUMNS, EXPLAINER
  
     base_dir = os.path.dirname(os.path.abspath(__file__))
     model_path = os.path.join(base_dir, "../models/rf_engagement_model.joblib")
@@ -78,18 +78,11 @@ async def lifespan(app: FastAPI):
         print("WARNING: Model artifacts not found. Initiating Cold Start sequence...")
         print("Fetching data and training initial model...")
         trigger_retraining()  # pulls Mongo data and creates the .joblib files
- 
-    # load historical data into RAM (needed for /generate_ideas context)
-    print("Loading historical data into RAM...")
-    HISTORICAL_DF = load_and_clean_data()
- 
+  
     # sync Vector Database — ensure ChromaDB is aligned with MongoDB.
     # If ChromaDB is empty (true cold start), seed it from the historical CSV data.
     print("Syncing Vector Database...")
-    existing_count = sync_new_posts()
-    if existing_count == 0 and HISTORICAL_DF is not None:
-        print("ChromaDB is empty. Seeding from historical CSV data...")
-        build_vector_db(HISTORICAL_DF)
+    sync_new_posts()
  
     # load ML model artifacts into RAM
     print("Loading ML models into memory...")
@@ -102,6 +95,14 @@ async def lifespan(app: FastAPI):
     # (shutdown logic can go here if needed)
 
 app = FastAPI(title="Engagement Prediction & Generation API", lifespan=lifespan)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 @app.post("/generate_ideas")
 def generate_ideas_from_top_posts(req: IdeationRequest):

@@ -11,7 +11,10 @@ cp .env.example .env.local
 2. Ensure `NEXT_PUBLIC_API_BASE_URL` points to the running backend API
 	(default: `http://localhost:8000`).
 
-3. Run the development server:
+3. (Optional) Set `NEXT_PUBLIC_ML_API_BASE_URL` for Predictive Insights ML studio.
+	If unset, frontend defaults to `http://localhost:8001`.
+
+4. Run the development server:
 
 ```bash
 npm run dev
