@@ -65,6 +65,9 @@ async def _run_scrape_job() -> None:
         _state["last_status"] = "error"
         _state["last_error"] = str(exc)
         logger.error("Scheduled trends scrape failed: %s", exc)
+    finally:
+        # Always update next_run in shared state after a job attempt
+        trends_scheduler.update_next_run()
 
 
 # ── Scheduler wrapper ──────────────────────────────────────────────────────────
@@ -79,14 +82,17 @@ class _TrendsScheduler:
         _state["interval_hours"] = interval_h
 
         self._scheduler = AsyncIOScheduler()
+        # Set next_run_time to now so it fires immediately upon start()
+        # then reschedules according to the interval.
+        first_run = datetime.now(timezone.utc)
+        
         self._scheduler.add_job(
             _run_scrape_job,
             trigger="interval",
             hours=interval_h,
             id="competitor_scrape",
             replace_existing=True,
-            # Run the first scrape shortly after startup so cold-start serves AI data quickly
-            next_run_time=None,  # APScheduler will fire after first interval
+            next_run_time=first_run, 
         )
         self._scheduler.start()
 
