@@ -22,7 +22,7 @@ client = TestClient(app)
 # ── Shared stub payloads ──────────────────────────────────────────────────────
 
 STUB_OVERVIEW = {
-    "subscribers": 8750,
+    "subscribers": "-",
     "total_views": 1_240_000,
     "total_videos": 342,
     "watch_time_hours": 58200,

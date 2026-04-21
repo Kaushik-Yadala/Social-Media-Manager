@@ -231,7 +231,7 @@ def _stub_overview(start_date: str, end_date: str) -> dict:
             "date_range": {"start_date": start_date, "end_date": end_date},
         }
     return {
-        "subscribers": 8750,
+        "subscribers": "-",
         "total_views": 1_245_600,
         "total_videos": 142,
         "watch_time_hours": 52400,

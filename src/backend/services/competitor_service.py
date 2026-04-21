@@ -739,10 +739,10 @@ async def _set_cache(data: dict[str, Any]) -> None:
                 {**data, "_id": "latest_competitors", "cached_at": datetime.now(timezone.utc)},
                 upsert=True,
             ),
-            timeout=2.0
+            timeout=10.0
         )
     except Exception as exc:
-        logger.debug("Competitor cache write skipped (%s)", exc.__class__.__name__)
+        logger.warning("Competitor cache write failed: %s", exc)
 
 
 # ── Estimation helpers ────────────────────────────────────────────────────────
@@ -915,9 +915,13 @@ async def _do_scrape() -> CompetitorsResponse:
             growth         = _estimate_growth(primary)
             growth_trend   = _generate_growth_trend(ig_final or primary)
 
+            # Use same handle logic as _build_fallback
+            handle = comp.get("instagram") or comp.get("facebook") or comp.get("name").lower().replace(" ", "")
+            if not handle.startswith("@"): handle = f"@{handle}"
+
             competitor_results.append({
                 "id": comp["id"], "name": comp["name"],
-                "handle": f"@{comp['instagram']}",
+                "handle": handle,
                 "metrics": {
                     "facebook": fb_final, "instagram": ig_final,
                     "linkedin": li_final, "youtube":   yt_final,

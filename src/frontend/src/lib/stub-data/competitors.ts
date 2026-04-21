@@ -7,7 +7,7 @@ export const CLUB_ARTIZEN_STUB = {
     instagram: 28400,
     facebook: 22800,
     linkedin: 12300,
-    youtube: 8750,
+    youtube: "-",
     engagement: 4.8,
     postsPerWeek: 10,
     growth: 5.2,
