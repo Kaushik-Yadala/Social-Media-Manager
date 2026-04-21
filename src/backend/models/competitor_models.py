@@ -43,3 +43,13 @@ class CompetitorsResponse(BaseModel):
     competitors: list[CompetitorData]
     last_updated: str
     source: str = Field(description="live | cache | fallback")
+
+
+class CompetitorCreateRequest(BaseModel):
+    """Payload for POST /api/competitors."""
+    name: str = Field(..., min_length=2, max_length=50)
+    instagram: Optional[str] = None
+    facebook: Optional[str] = None
+    linkedin: Optional[str] = None
+    youtube: Optional[str] = None
+    website: Optional[str] = None

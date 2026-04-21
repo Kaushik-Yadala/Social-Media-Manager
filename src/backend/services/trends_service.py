@@ -122,7 +122,8 @@ async def scrape_competitor_pages(urls: list[str]) -> list[dict[str, Any]]:
 
     async def _scrape_one(url: str) -> dict[str, Any] | None:
         async with sem:
-            async with httpx.AsyncClient() as client:
+            # Create a fresh client for each request or pass the shared one
+            async with httpx.AsyncClient(headers=_HEADERS, timeout=_TIMEOUT, follow_redirects=True) as client:
                 html = await _fetch_page(client, url)
             if html:
                 await asyncio.sleep(_SCRAPE_DELAY)
@@ -131,9 +132,9 @@ async def scrape_competitor_pages(urls: list[str]) -> list[dict[str, Any]]:
 
     tasks = [_scrape_one(u) for u in urls]
     for coro in asyncio.as_completed(tasks):
-        result = await coro
-        if result:
-            results.append(result)
+        res = await coro
+        if res:
+            results.append(res)
     return results
 
 
@@ -168,6 +169,15 @@ Analyse the compact competitor website summaries below and return ONLY a raw JSO
       "channel": "<instagram|linkedin|whatsapp>",
       "expected_impact": "<e.g. +30% engagement>",
       "related_trend": "<trend topic name or null>"
+    }
+  ],
+  "trend_trajectories": [
+    {
+      "label": "<Topic Name>",
+      "color": "<Hex Color Code>",
+      "data": [
+        {"date": "YYYY-MM", "value": <projected interest 0-100>}
+      ]
     }
   ],
   "competitor_insights": [
@@ -249,9 +259,16 @@ async def _call_groq(prompt: str) -> dict[str, Any] | None:
             data = resp.json()
             text = data["choices"][0]["message"]["content"].strip()
 
-        if text.startswith("```"):
-            lines = text.split("\n")
-            text = "\n".join(lines[1:-1] if lines[-1].strip() == "```" else lines[1:])
+        # Clean up code blocks if the LLM didn't use response_format correctly
+        if "```" in text:
+            # Extract content between triple backticks if present
+            import re
+            match = re.search(r"```(?:json)?\n?(.*?)\n?```", text, re.DOTALL)
+            if match:
+                text = match.group(1).strip()
+            else:
+                # Fallback to simple removal if regex fails but backticks exist
+                text = text.replace("```json", "").replace("```", "").strip()
 
         parsed = json.loads(text)
         logger.info(
@@ -293,7 +310,7 @@ async def analyze_with_ai(
         logger.warning("No scrape context — skipping AI analysis")
         return None
 
-    prompt = _SYSTEM_PROMPT + context
+    prompt = f"Today's date: {datetime.now(timezone.utc).strftime('%Y-%m-%d')}\n\n" + _SYSTEM_PROMPT + context
     logger.info("AI prompt size: %d chars (~%d tokens)", len(prompt), len(prompt) // 4)
 
     # ── 1. Try Gemini (multiple models) ──────────────────────────────────────
@@ -458,10 +475,19 @@ async def _set_cache(data: dict[str, Any]) -> None:
 
 
 # ── Fallback ──────────────────────────────────────────────────────────────────
-
 def _build_fallback() -> dict[str, Any]:
     """Return hardcoded data based on real competitors so the UI always renders."""
     now = datetime.now(timezone.utc).isoformat()
+    # Generate dynamic dates for trajectories so it feels "live"
+    # Returns 3 months in past, current month, and 1-2 months in future
+    traj_data = []
+    base_date = datetime.now(timezone.utc)
+    for i in range(-3, 2):
+        dt = base_date + timedelta(days=i * 30)
+        # deterministic-ish random values
+        val = 40 + (i * 15) + (hash(str(i)) % 10)
+        traj_data.append({"date": dt.strftime("%Y-%m"), "value": max(10, min(100, val))})
+
     return {
         "trending_topics": [
             {"id": "tr-1", "category": "Product", "topic": "Handwoven Textiles & Block Print Revival", "change": 340, "confidence": 92, "signal": "rising", "sources": ["Jaypore", "iTokri", "Okhai"]},
@@ -479,10 +505,10 @@ def _build_fallback() -> dict[str, Any]:
             {"id": "sa-5", "priority": "medium", "title": "Craft Process Behind-the-Scenes Stories", "description": "Post weekly Instagram Stories showing the end-to-end craft process — raw materials to finished product — to differentiate from mass-market competitors.", "channel": "instagram", "expected_impact": "+30% story views", "related_trend": "Behind-the-Scenes Craft Process Videos"},
         ],
         "trend_trajectories": [
-            {"label": "Handwoven Textiles", "color": "#E5A100", "data": [{"date": "2025-11", "value": 20}, {"date": "2025-12", "value": 35}, {"date": "2026-01", "value": 52}, {"date": "2026-02", "value": 74}, {"date": "2026-03", "value": 95}]},
-            {"label": "Artisan Storytelling", "color": "#C75B39", "data": [{"date": "2025-11", "value": 15}, {"date": "2025-12", "value": 28}, {"date": "2026-01", "value": 44}, {"date": "2026-02", "value": 63}, {"date": "2026-03", "value": 85}]},
-            {"label": "Sustainable Packaging", "color": "#50B88C", "data": [{"date": "2025-11", "value": 10}, {"date": "2025-12", "value": 22}, {"date": "2026-01", "value": 38}, {"date": "2026-02", "value": 55}, {"date": "2026-03", "value": 72}]},
-            {"label": "Gift Hampers", "color": "#9B6AD4", "data": [{"date": "2025-11", "value": 25}, {"date": "2025-12", "value": 45}, {"date": "2026-01", "value": 58}, {"date": "2026-02", "value": 70}, {"date": "2026-03", "value": 80}]},
+            {"label": "Handwoven Textiles", "color": "#E5A100", "data": traj_data},
+            {"label": "Artisan Storytelling", "color": "#C75B39", "data": [p.copy() for p in traj_data]},
+            {"label": "Sustainable Packaging", "color": "#50B88C", "data": [p.copy() for p in traj_data]},
+            {"label": "Gift Hampers", "color": "#9B6AD4", "data": [p.copy() for p in traj_data]},
         ],
         "competitor_insights": [
             {"competitor_name": "Jaypore", "observation": "Dominating the premium handcrafted jewellery and apparel space with strong editorial-style photography and curated collections by craft region.", "opportunity": "Club Artizen can differentiate by adding interactive craft region maps and artisan profiles to match Jaypore's curation depth."},
@@ -537,7 +563,7 @@ async def get_competitor_insights(force_refresh: bool = False) -> TrendsResponse
         result = {
             "trending_topics": ai_result.get("trending_topics", fallback["trending_topics"]),
             "suggested_actions": ai_result.get("suggested_actions", fallback["suggested_actions"]),
-            "trend_trajectories": fallback["trend_trajectories"],  # always use projected trajectory
+            "trend_trajectories": ai_result.get("trend_trajectories", fallback["trend_trajectories"]),
             "competitor_insights": ai_result.get("competitor_insights", fallback["competitor_insights"]),
             "last_updated": datetime.now(timezone.utc).isoformat(),
             "source": "ai",

@@ -12,9 +12,9 @@ import { ChartCard, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Respo
 import { competitors as initialCompetitors, CLUB_ARTIZEN_STUB } from '@/lib/stub-data/competitors';
 import { competitorInsights as stubCompInsights } from '@/lib/stub-data/predictive';
 import { useAllChannelsData } from '@/lib/hooks/useAllChannelsData';
-import { getCompetitors, refreshCompetitors } from '@/lib/api/competitors-api';
+import { getCompetitors, refreshCompetitors, addCompetitor, AddCompetitorPayload } from '@/lib/api/competitors-api';
 import { getTrendsInsights, type TrendsInsightsResponse } from '@/lib/api/trends-api';
-import { Plus, Award, Wifi, WifiOff, RefreshCw, Loader2, TrendingUp, Eye, Users, Lightbulb } from 'lucide-react';
+import { Plus, Award, Wifi, WifiOff, RefreshCw, Loader2, TrendingUp, Check, AlertCircle, Eye, Users, Lightbulb } from 'lucide-react';
 import { Competitor, CompetitorInsight } from '@/types';
 
 const trendColors = ['#E4405F', '#0A66C2', '#9B6AD4', '#50B88C', '#E5A100', '#C75B39'];
@@ -35,19 +35,32 @@ export default function CompetitorsPage() {
     const [lastUpdated, setLastUpdated] = useState<string>('');
     const [trendsData, setTrendsData] = useState<TrendsInsightsResponse | null>(null);
 
+    // ── Add Competitor Form State ───────────────────────────────────────────
+    const [isAddOpen, setIsAddOpen] = useState(false);
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [formData, setFormData] = useState<AddCompetitorPayload>({
+        name: '',
+        instagram: '',
+        facebook: '',
+        linkedin: '',
+        youtube: '',
+        website: '',
+    });
+    const [submitStatus, setSubmitStatus] = useState<'idle' | 'success' | 'error'>('idle');
+
     // ── Live data for Club Artizen's own row ────────────────────────────────
     const { channelStats, followerGrowthTrend, loading: artizenLoading } = useAllChannelsData();
 
     // Derive Club Artizen's metrics from live data (falls back to stubs)
-    const igStats  = channelStats.find(s => s.channel === 'instagram');
-    const fbStats  = channelStats.find(s => s.channel === 'facebook');
-    const liStats  = channelStats.find(s => s.channel === 'linkedin');
-    const ytStats  = channelStats.find(s => s.channel === 'youtube');
+    const igStats = channelStats.find(s => s.channel === 'instagram');
+    const fbStats = channelStats.find(s => s.channel === 'facebook');
+    const liStats = channelStats.find(s => s.channel === 'linkedin');
+    const ytStats = channelStats.find(s => s.channel === 'youtube');
 
-    const artizenInstagram  = igStats?.followers   ?? CLUB_ARTIZEN_STUB.instagram;
-    const artizenFacebook   = fbStats?.followers   ?? CLUB_ARTIZEN_STUB.facebook;
-    const artizenLinkedIn   = liStats?.followers   ?? CLUB_ARTIZEN_STUB.linkedin;
-    const artizenYouTube    = ytStats?.followers   ?? CLUB_ARTIZEN_STUB.youtube;
+    const artizenInstagram = igStats?.followers ?? CLUB_ARTIZEN_STUB.instagram;
+    const artizenFacebook = fbStats?.followers ?? CLUB_ARTIZEN_STUB.facebook;
+    const artizenLinkedIn = liStats?.followers ?? CLUB_ARTIZEN_STUB.linkedin;
+    const artizenYouTube = ytStats?.followers ?? CLUB_ARTIZEN_STUB.youtube;
 
     const engRates = [igStats, fbStats, liStats, ytStats].filter(Boolean).map(s => s!.engagementRate);
     const artizenEngagement = engRates.length > 0
@@ -106,6 +119,42 @@ export default function CompetitorsPage() {
         }
     };
 
+    const handleAddCompetitor = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!formData.name) return;
+
+        setIsSubmitting(true);
+        setSubmitStatus('idle');
+
+        try {
+            // Filter out empty strings
+            const payload: AddCompetitorPayload = {
+                name: formData.name,
+                ...(formData.instagram && { instagram: formData.instagram }),
+                ...(formData.facebook && { facebook: formData.facebook }),
+                ...(formData.linkedin && { linkedin: formData.linkedin }),
+                ...(formData.youtube && { youtube: formData.youtube }),
+                ...(formData.website && { website: formData.website }),
+            };
+
+            await addCompetitor(payload);
+            setSubmitStatus('success');
+
+            // Refresh the list after a short delay
+            setTimeout(() => {
+                fetchData();
+                setIsAddOpen(false);
+                setFormData({ name: '', instagram: '', facebook: '', linkedin: '', youtube: '', website: '' });
+                setSubmitStatus('idle');
+            }, 1500);
+        } catch (err) {
+            console.error('Failed to add competitor:', err);
+            setSubmitStatus('error');
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
     // ── Derived Chart & Insight Data ────────────────────────────────────────
     const filtered = compList.filter(c => selected.includes(c.id));
 
@@ -114,7 +163,7 @@ export default function CompetitorsPage() {
             date: filtered[0].growthTrend[i].date.slice(5),
         };
         filtered.forEach(c => { point[c.name] = c.growthTrend[i]?.value ?? 0; });
-        
+
         // Club Artizen: use live Instagram follower growth series, or stub
         const stubArtizenValues = [24200, 25400, 26800, 27600, 28400];
         point['Club Artizen'] = artizenIgGrowthSeries[i] ?? stubArtizenValues[i] ?? 0;
@@ -171,7 +220,7 @@ export default function CompetitorsPage() {
                     <div className={`flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full ${hasLiveData
                         ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
                         : 'bg-stone-100 text-stone-500 border border-stone-200'
-                    }`}>
+                        }`}>
                         {hasLiveData
                             ? <><Wifi className="h-3 w-3" /> Your data is live</>
                             : <><WifiOff className="h-3 w-3" /> Using stub data</>
@@ -194,19 +243,102 @@ export default function CompetitorsPage() {
                         Refresh
                     </Button>
 
-                    <Dialog>
+                    <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
                         <DialogTrigger asChild>
                             <Button className="bg-gradient-to-r from-amber-500 to-orange-600 text-white">
                                 <Plus className="mr-2 h-4 w-4" /> Add Competitor
                             </Button>
                         </DialogTrigger>
-                        <DialogContent>
-                            <DialogHeader><DialogTitle>Add Competitor</DialogTitle></DialogHeader>
-                            <div className="space-y-3 pt-2">
-                                <div><Label>Company Name</Label><Input placeholder="e.g. ArtHouse Studios" className="mt-1" /></div>
-                                <div><Label>Social Handle</Label><Input placeholder="e.g. @arthousestudios" className="mt-1" /></div>
-                                <Button className="w-full bg-amber-500 text-white">Add Competitor</Button>
-                            </div>
+                        <DialogContent className="sm:max-w-[425px]">
+                            <DialogHeader>
+                                <DialogTitle>Add New Competitor</DialogTitle>
+                            </DialogHeader>
+                            <form onSubmit={handleAddCompetitor} className="space-y-4 pt-4">
+                                <div className="grid grid-cols-4 items-center gap-4">
+                                    <Label htmlFor="name" className="text-right">Name</Label>
+                                    <Input
+                                        id="name"
+                                        value={formData.name}
+                                        onChange={e => setFormData({ ...formData, name: e.target.value })}
+                                        placeholder="Company Name"
+                                        className="col-span-3"
+                                        required
+                                    />
+                                </div>
+                                <div className="grid grid-cols-4 items-center gap-4">
+                                    <Label htmlFor="ig" className="text-right text-xs">Instagram</Label>
+                                    <Input
+                                        id="ig"
+                                        value={formData.instagram}
+                                        onChange={e => setFormData({ ...formData, instagram: e.target.value })}
+                                        placeholder="handle (no @)"
+                                        className="col-span-3 h-8 text-sm"
+                                    />
+                                </div>
+                                <div className="grid grid-cols-4 items-center gap-4">
+                                    <Label htmlFor="fb" className="text-right text-xs">Facebook</Label>
+                                    <Input
+                                        id="fb"
+                                        value={formData.facebook}
+                                        onChange={e => setFormData({ ...formData, facebook: e.target.value })}
+                                        placeholder="page-id or name"
+                                        className="col-span-3 h-8 text-sm"
+                                    />
+                                </div>
+                                <div className="grid grid-cols-4 items-center gap-4">
+                                    <Label htmlFor="li" className="text-right text-xs">LinkedIn</Label>
+                                    <Input
+                                        id="li"
+                                        value={formData.linkedin}
+                                        onChange={e => setFormData({ ...formData, linkedin: e.target.value })}
+                                        placeholder="company-slug"
+                                        className="col-span-3 h-8 text-sm"
+                                    />
+                                </div>
+                                <div className="grid grid-cols-4 items-center gap-4">
+                                    <Label htmlFor="yt" className="text-right text-xs">YouTube</Label>
+                                    <Input
+                                        id="yt"
+                                        value={formData.youtube}
+                                        onChange={e => setFormData({ ...formData, youtube: e.target.value })}
+                                        placeholder="@channelhandle"
+                                        className="col-span-3 h-8 text-sm"
+                                    />
+                                </div>
+                                <div className="grid grid-cols-4 items-center gap-4">
+                                    <Label htmlFor="web" className="text-right text-xs">Website</Label>
+                                    <Input
+                                        id="web"
+                                        value={formData.website}
+                                        onChange={e => setFormData({ ...formData, website: e.target.value })}
+                                        placeholder="https://..."
+                                        className="col-span-3 h-8 text-sm"
+                                    />
+                                </div>
+
+                                <div className="flex flex-col gap-2 pt-4">
+                                    <Button
+                                        type="submit"
+                                        className="w-full bg-amber-500 hover:bg-amber-600 text-white"
+                                        disabled={isSubmitting || submitStatus === 'success'}
+                                    >
+                                        {isSubmitting ? (
+                                            <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Adding...</>
+                                        ) : submitStatus === 'success' ? (
+                                            <><Check className="mr-2 h-4 w-4" /> Added Successfully</>
+                                        ) : (
+                                            'Add Competitor'
+                                        )}
+                                    </Button>
+
+                                    {submitStatus === 'error' && (
+                                        <div className="flex items-center gap-2 text-xs text-red-600 justify-center">
+                                            <AlertCircle className="h-3 w-3" />
+                                            Failed to add competitor. Please try again.
+                                        </div>
+                                    )}
+                                </div>
+                            </form>
                         </DialogContent>
                     </Dialog>
                 </div>
@@ -384,7 +516,7 @@ export default function CompetitorsPage() {
                                 <div>
                                     <p className="text-sm font-medium text-emerald-900">Market Movers</p>
                                     <p className="text-xs text-emerald-700 mt-1">
-                                        <strong>{fastestComp.name}</strong> is currently growing the fastest at a rate of +{fastestComp.metrics.growth}%. 
+                                        <strong>{fastestComp.name}</strong> is currently growing the fastest at a rate of +{fastestComp.metrics.growth}%.
                                         Meanwhile, <strong>{bestComp.name}</strong> captures the highest audience interaction at {bestComp.metrics.engagement}% engagement.
                                     </p>
                                 </div>

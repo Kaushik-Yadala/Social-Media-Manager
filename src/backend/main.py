@@ -29,6 +29,8 @@ async def lifespan(app: FastAPI):
         tlsCAFile=certifi.where(),
         serverSelectionTimeoutMS=5000,   # fail fast instead of hanging 30s
     )
+    from services.competitor_service import load_competitors_from_db
+    await load_competitors_from_db()
     await trends_scheduler.start()
     yield
     # Shutdown

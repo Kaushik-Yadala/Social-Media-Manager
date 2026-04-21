@@ -113,3 +113,19 @@ export async function getCompetitors(): Promise<CompetitorsResult> {
 export async function refreshCompetitors(): Promise<{ status: string; source: string }> {
     return apiFetch('/api/competitors/refresh', { method: 'POST' });
 }
+
+export interface AddCompetitorPayload {
+    name: string;
+    instagram?: string;
+    facebook?: string;
+    linkedin?: string;
+    youtube?: string;
+    website?: string;
+}
+
+export async function addCompetitor(payload: AddCompetitorPayload): Promise<any> {
+    return apiFetch('/api/competitors', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+    });
+}
